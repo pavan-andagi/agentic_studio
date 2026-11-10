@@ -1,0 +1,33 @@
+# ---- LLM used by the Trend, Planner, Script and Editing agents ----
+llm:
+  model: claude-sonnet-5-5        # any Claude model string works here
+  max_tokens: 12000
+  web_search_max_uses: 8          # Trend agent only
+
+# ---- Master agent: turns your feedback into proceed / go-back decisions ----
+master:
+  enabled: true
+  confirm_decisions: false   # true = confirm each Master decision first
+
+# ---- ComfyUI (on the pod, or via SSH tunnel to localhost:8188) ----
+comfy:
+  url: http://127.0.0.1:8188
+  poll_seconds: 5
+  timeout_minutes: 60             # per job
+  workflows:                      # API-format exports (see workflows/README.md)
+    image: workflows/z_image_t2i.json
+    i2v: workflows/ltx_i2v.json
+    flf2v: workflows/ltx_flf2v.json
+    upscale: workflows/upscale_4k.json   # optional (RIFE + Real-ESRGAN)
+
+# ---- Defaults the Planner starts from (it can change them, you approve) ----
+defaults:
+  aspect: "9:16"                  # 9:16 Reels/Shorts, 16:9 YouTube
+  image_size: [1088, 1920]
+  video_size: [1088, 1920]
+  fps: 30
+  max_clip_seconds: 5
+  images_per_keyframe: 2          # Z-Image variants to choose from
+  upscale_4k: false               # true = run the upscale workflow on approved clips
+
+projects_dir: projects
