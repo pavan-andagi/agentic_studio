@@ -5,14 +5,17 @@ human's feedback into a decision (go on, or go back to the root cause).
   python -m studio.main resume my_project
 """
 import argparse
+import os
 import sys
+import time
 from pathlib import Path
 
 import yaml
 
+from . import dashboard
 from .agents import clips, images, master, planner, script, trend
 from .agents.base import Ctx
-from .approval import STAGES, Project, banner, review_gate
+from .approval import STAGES, Project, ask, banner, bind, enable_web, review_gate
 from .comfy import Comfy
 from .llm import LLM
 
@@ -23,6 +26,15 @@ TITLES = {"trend": "1 Trend Identifier", "plan": "2 Project Planner",
           "clips": "5 Clips & Editing"}
 
 
+READS = {"trend": "channel brief", "plan": "1_trend_chosen.json",
+         "script": "2_plan.json", "images": "3_script.json (image prompts)",
+         "clips": "3_script.json + keyframes"}
+
+
+def stage_name(i):
+    return STAGES[i]
+
+
 def run_stage(ctx, stage):
     """Run one stage: agent -> human review -> (if feedback) Master decides.
     Returns None to move on, or (target, items, instructions) to go back."""
@@ -30,8 +42,14 @@ def run_stage(ctx, stage):
     pending = p.take_pending(stage) or {}
     feedback, items = pending.get("feedback"), pending.get("items")
     while True:
+        p.set_status(stage, "working", "agent is working")
+        p.event(stage, "start", "Agent started"
+                + (f" (feedback: {feedback[:120]})"
+                   if feedback and feedback != planner.RELOAD else ""),
+                reads=READS[stage])
         result = AGENTS[stage].run(ctx, feedback, items)
-        p.save()
+        p.event(stage, "output", result.summary[:400])
+        p.set_status(stage, "waiting", "waiting for your review")
         action, text = review_gate(TITLES[stage], result.summary,
                                    result.artifact)
         if action == "quit":
@@ -41,23 +59,33 @@ def run_stage(ctx, stage):
             continue
         if action == "approve":
             p.log(stage, "human", "Approved.")
+            p.event(stage, "approved", "You approved this stage")
             p.mark(stage)
             return None
 
         # ---- human gave feedback: the Master decides what happens ----
         p.log(stage, "human", text)
+        p.event(stage, "human_feedback", text)
         if not ctx.cfg.get("master", {}).get("enabled", True):
             feedback, items = text, None          # no Master: redo stage
             if stage in ("images", "clips"):
                 p.rewind(stage, None)
             continue
+        p.set_status(stage, "master", "Master agent is analysing your feedback")
         d = master.decide(ctx, stage, result, text)
         banner("MASTER AGENT DECISION")
         print(master.describe(d))
+        p.event(stage, "master_decision",
+                (f"Go back to {d['target_stage'].upper()}" if d["verdict"] == "revisit"
+                 else "Proceed") + f": {d.get('root_cause') or d.get('understanding', '')}",
+                verdict=d["verdict"], target=d.get("target_stage"),
+                items=d.get("affected_items") or [])
         if ctx.cfg.get("master", {}).get("confirm_decisions", False):
-            if input("\nPress Enter to carry this out, or type 'x' to "
-                     "redo this stage with your feedback instead > "
-                     ).strip().lower() == "x":
+            if ask("Confirm the Master's decision", master.describe(d), None,
+                   "Enter = carry it out; x = redo this stage with your "
+                   "feedback instead", "review",
+                   "\nPress Enter to carry this out, or type 'x' to redo "
+                   "this stage with your feedback instead > ").lower() == "x":
                 d = {"verdict": "revisit", "target_stage": stage,
                      "affected_items": [], "instructions": text,
                      "root_cause": "human override", "understanding": text}
@@ -83,6 +111,25 @@ def run_stage(ctx, stage):
         return target, its, d["instructions"]
 
 
+class Tee:
+    """Copy everything printed to a project log the dashboard can show."""
+
+    def __init__(self, stream, path):
+        self.stream, self.f = stream, open(path, "a", encoding="utf-8")
+
+    def write(self, text):
+        self.stream.write(text)
+        self.f.write(text)
+        self.f.flush()
+        return len(text)
+
+    def flush(self):
+        self.stream.flush()
+
+    def __getattr__(self, name):
+        return getattr(self.stream, name)
+
+
 def main():
     ap = argparse.ArgumentParser(description="Agentic AI video studio")
     ap.add_argument("command", choices=["new", "resume"])
@@ -101,10 +148,25 @@ def main():
     if not p.state["inputs"].get("brief"):
         sys.exit("No brief saved for this project; start it with 'new'.")
 
+    # ---- live dashboard (browser) + console log ----
+    dcfg = cfg.get("dashboard") or {}
+    p.state["run"] = {"pid": os.getpid(), "started": time.time()}
+    p.save()
+    sys.stdout = Tee(sys.stdout, p.dir / "console.log")
+    bind(p)
+    if dcfg.get("enabled", True):
+        enable_web(p)
+        dashboard.start(cfg["projects_dir"], dcfg.get("port", 8765),
+                        os.environ.get("STUDIO_DASH_TOKEN") or dcfg.get("token") or None,
+                        default=args.name)
+
     llm = LLM(cfg["llm"]["model"], cfg["llm"]["max_tokens"],
               cfg["llm"]["web_search_max_uses"])
+    maps = cfg["comfy"].get("mappings") or {}
     comfy = Comfy(cfg["comfy"]["url"], cfg["comfy"]["poll_seconds"],
-                  cfg["comfy"]["timeout_minutes"])
+                  cfg["comfy"]["timeout_minutes"],
+                  {path: maps.get(kind) or {}
+                   for kind, path in cfg["comfy"]["workflows"].items()})
     ctx = Ctx(p, llm, comfy, cfg)
 
     i = next((n for n, s in enumerate(STAGES) if not p.approved(s)),
@@ -121,9 +183,12 @@ def main():
         target, items, fb = decision
         banner(f"GOING BACK TO: {target.upper()}"
                + (f" (shots {', '.join(items)})" if items else ""))
+        p.event(target, "rewind", fb, frm=stage_name(i), items=items or [])
         p.rewind(target, items, fb)
         i = STAGES.index(target)
 
+    p.set_status(None, "done", "All stages approved")
+    p.event("clips", "done", "Pipeline finished")
     banner("DONE")
     print(f"Final video: {p.dir / 'final'}\nEdit notes: "
           f"{p.dir / '5_edit_notes.json'}\nFeedback log: {p.state_file}")

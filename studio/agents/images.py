@@ -47,6 +47,7 @@ def run(ctx, feedback=None, items=None):
             p.write_json("3_script.json", script)
         while True:
             print(f"\n[Image agent] {key}: generating {n} options ...")
+            p.set_status("images", "working", f"generating {n} options for {key}")
             cands = []
             for i in range(n):
                 files = ctx.comfy.run(cfg["comfy"]["workflows"]["image"], {
@@ -65,12 +66,15 @@ def run(ctx, feedback=None, items=None):
                 f" or a path to your own image.")
             if action == "pick" and val.isdigit() and 1 <= int(val) <= len(cands):
                 src = cands[int(val) - 1]
+                p.event("images", "human_pick", f"{key}: picked option #{val}")
             elif action == "pick" and val.lower() == "t":
+                p.event("images", "human_pick", f"{key}: new options, same prompt")
                 continue                      # same prompt, new seeds
             elif action == "pick" and Path(val).exists():
                 src = Path(val)
             elif action == "revise":
                 p.log("images", "human", f"{key}: {val}")
+                p.event("images", "agent_feedback", f"{key}: {val}")
                 sh[field] = rewrite(ctx, sh[field], val)
                 p.write_json("3_script.json", script)
                 continue

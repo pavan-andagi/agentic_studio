@@ -69,6 +69,7 @@ def run(ctx, feedback=None, items=None):
                 values["@LAST_IMAGE"] = ctx.comfy.upload(kf[f"{sid}_end"])
                 wf = cfg["comfy"]["workflows"]["flf2v"]
             print(f"\n[Clip agent] {sid} ({s['mode']}, {s['duration']}s) ...")
+            p.set_status("clips", "working", f"generating clip {sid} ({s['mode']}, {s['duration']} s)")
             vid = _video(ctx.comfy.run(wf, values, p.dir / "clips" / "takes",
                                        label=sid))
             info, issues = validate(vid)
@@ -87,11 +88,14 @@ def run(ctx, feedback=None, items=None):
                 (p.dir / "clips" / f"{sid}_4k.mp4").unlink(missing_ok=True)
                 done[sid] = str(dest)
                 p.save()
+                p.event("clips", "human_pick", f"{sid}: clip approved")
                 break
             if action == "pick" and val.lower() == "t":
+                p.event("clips", "human_pick", f"{sid}: retake with a new seed")
                 continue
             if action == "revise":
                 p.log("clips", "human", f"{sid}: {val}")
+                p.event("clips", "agent_feedback", f"{sid}: {val}")
                 _rewrite(ctx, s, val, issues)
                 p.write_json("3_script.json", script)
                 continue
@@ -106,6 +110,7 @@ def run(ctx, feedback=None, items=None):
         if d.get("upscale_4k"):
             if not out.exists():
                 print(f"[Clip agent] finishing {s['id']} (4K) ...")
+                p.set_status("clips", "working", f"finishing {s['id']} to 4K")
                 files = ctx.comfy.run(cfg["comfy"]["workflows"]["upscale"], {
                     "@VIDEO": ctx.comfy.upload(clip),
                     "@FILENAME": f"studio/{p.dir.name}_{s['id']}_4k"},
@@ -115,6 +120,7 @@ def run(ctx, feedback=None, items=None):
         finished.append(clip)
 
     # ---- assembly ----
+    p.set_status("clips", "working", "joining the clips into the final video")
     size = probe(finished[0])
     chained = [i for i, s in enumerate(shots)
                if s["start_from"] == "previous_last_frame" and i > 0]
@@ -124,6 +130,7 @@ def run(ctx, feedback=None, items=None):
     info, issues = validate(final)
 
     # ---- editing suggestions ----
+    p.set_status("clips", "working", "writing editing suggestions")
     sheets = [contact_sheet(c, p.dir / "sheets" / f"final_{i:02d}.png", 6)
               for i, c in enumerate(finished)]
     notes = ctx.llm.ask_json(EDITOR, f"Script:\n{json.dumps(script)}",

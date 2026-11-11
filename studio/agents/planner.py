@@ -54,6 +54,7 @@ def run(ctx, feedback=None, items=None):
         elif feedback:
             prompt += f"\n\nApply this feedback: {feedback}"
         print("\n[Planner agent] writing the plan ...")
+        p.set_status("plan", "working", "writing the production plan")
         data = ctx.llm.ask_json(SYSTEM, prompt)
     path = p.write_json("2_plan.json", data)
     return StageResult(summarize(data), path, data)

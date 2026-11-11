@@ -25,6 +25,7 @@ def run(ctx, feedback=None, items=None):
                   f"{FORMAT}" + (f"\n\nFeedback to apply: {feedback}"
                                  if feedback else ""))
         print("\n[Trend agent] researching trends (web search) ...")
+        p.set_status("trend", "working", "searching the web for trends")
         data = ctx.llm.ask_json(SYSTEM, prompt, web_search=True)
         path = p.write_json("1_trends.json", data)
         n = len(data["trends"])

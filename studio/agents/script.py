@@ -53,6 +53,7 @@ def run(ctx, feedback=None, items=None):
         elif feedback:
             prompt += f"\n\nApply this feedback: {feedback}"
         print("\n[Script agent] writing the shot list ...")
+        p.set_status("script", "working", "writing the shot list and prompts")
         data = ctx.llm.ask_json(SYSTEM, prompt)
     path = p.write_json("3_script.json", data)
     return StageResult(summarize(data), path, data)

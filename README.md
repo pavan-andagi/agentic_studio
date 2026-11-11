@@ -94,6 +94,48 @@ audience India + diaspora, 9:16 Reels and 16:9 YouTube."
 python -m studio.main resume tiger_bride      # after quitting at a gate
 ```
 
+## From the second run: automatic setup
+
+1. Put this folder in a **private GitHub repo** and commit your three
+   exported workflows in `workflows/` (projects and keys stay out: see
+   `.gitignore`).
+2. In your RunPod or Vast.ai **template**, add the values from
+   `setup/studio.env.example` as **secret environment variables**, and
+   this **on-start command**:
+
+       cd /workspace && git clone https://$GITHUB_TOKEN@github.com/$STUDIO_REPO.git agentic_studio 2>/dev/null; bash /workspace/agentic_studio/setup/bootstrap.sh &
+
+3. Deploy a pod from that template. It installs everything, restores your
+   projects (if rclone is set), starts ComfyUI and checks the workflows;
+   progress is in `/workspace/bootstrap.log`.
+4. End of session: `bash setup/save_session.sh`, then destroy the pod.
+
+## Dashboard: watch the agents work
+
+Starting `python -m studio.main ...` also starts a live dashboard
+(port 8765). Two views:
+
+- **Flow**: the pipeline with live status per stage, the hand-off files,
+  each stage's output (trends, plan, shot table, keyframes, clip players,
+  final video), the Master's decisions, your feedback and the console.
+  When a gate is waiting you can **answer it in the browser** (pick an
+  image, approve, retake, send feedback); the terminal works too.
+- **Communication**: a live sequence diagram of every message between
+  You, the Orchestrator, the five agents, the Master, the Claude API and
+  ComfyUI, with token counts, GPU job times and your decisions. Click a
+  message for its details; filter by participant.
+
+Open it from your laptop with an SSH tunnel to the pod:
+
+    ssh -p <PORT> root@<IP> -L 8765:localhost:8765      then http://localhost:8765
+
+or, in a RunPod template, expose HTTP port 8765 and set `STUDIO_DASH_TOKEN`
+(then open `https://<pod-id>-8765.proxy.runpod.net/?key=<token>`).
+Without a token the dashboard only listens on localhost.
+
+Preview it without a pod: `python -m studio.dashboard --demo`
+(browse any project folder later with `python -m studio.dashboard`).
+
 ## Project folder
 
 ```

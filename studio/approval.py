@@ -1,12 +1,85 @@
 """Human gates, project state, feedback log and stage rewinding."""
 import json
 import os
+import re
+import select
 import subprocess
 import sys
 import time
+import uuid
 from pathlib import Path
 
 STAGES = ["trend", "plan", "script", "images", "clips"]
+WEB = {"project": None}      # set when the dashboard is on
+ACTIVE = {"project": None}   # the project being run (for event hooks)
+
+
+def bind(project):
+    ACTIVE["project"] = project
+
+
+def emit(kind, text="", **extra):
+    """Record a message between components (Claude API, ComfyUI, ...) in the
+    project timeline. Safe to call anywhere; does nothing if no project."""
+    p = ACTIVE["project"]
+    if p is None:
+        return
+    cur = p.state.get("current") or {}
+    who = "master" if cur.get("status") == "master" else cur.get("stage")
+    p.event(cur.get("stage"), kind, text, who=who, **extra)
+
+
+def enable_web(project):
+    """Let the browser dashboard answer gates (the terminal still works)."""
+    WEB["project"] = project
+    for f in ("pending.json", "response.json"):
+        (project.dir / f).unlink(missing_ok=True)
+
+
+def ask(title, summary, artifact=None, options="", kind="gate", prompt="> "):
+    """One answer from the terminal OR the dashboard, whichever comes first."""
+    p = WEB["project"]
+    if p is None:
+        return input(prompt).strip()
+    gid = uuid.uuid4().hex[:8]
+    (p.dir / "response.json").unlink(missing_ok=True)
+    cur = p.state.get("current") or {}
+    p.write_json("pending.json", {
+        "id": gid, "kind": kind, "title": title, "summary": summary,
+        "artifact": str(artifact) if artifact else None, "options": options,
+        "stage": cur.get("stage"), "time": time.time(), "pid": os.getpid()})
+    p.set_status(cur.get("stage"), "waiting", title)
+    print(prompt + "(answer here, or in the dashboard) ", end="", flush=True)
+    try:
+        terminal = sys.stdin.isatty()
+    except Exception:
+        terminal = False
+    resp = p.dir / "response.json"
+    while True:
+        if resp.exists():
+            try:
+                r = json.loads(resp.read_text())
+            except ValueError:
+                r = None
+            if r and r.get("id") == gid:
+                resp.unlink(missing_ok=True)
+                (p.dir / "pending.json").unlink(missing_ok=True)
+                print(f"[dashboard] {r.get('text', '')!r}")
+                return str(r.get("text", "")).strip()
+        if terminal:
+            try:
+                ready, _, _ = select.select([sys.stdin], [], [], 0.5)
+                if ready:
+                    line = sys.stdin.readline()
+                    if line == "":
+                        terminal = False       # stdin closed: dashboard only
+                    else:
+                        (p.dir / "pending.json").unlink(missing_ok=True)
+                        return line.strip()
+            except (OSError, ValueError):
+                terminal = False
+        else:
+            time.sleep(0.5)
 
 
 def banner(title):
@@ -26,12 +99,16 @@ def gate(title, summary, artifact=None, extra_options=None):
         opts = extra_options + "\n" + opts
     while True:
         print("\n" + opts)
-        ans = input("> ").strip()
+        ans = ask(title, summary, artifact, opts, "gate")
         low = ans.lower()
+        m = re.match(r"^(?:r|revise)\s+(.+)$", ans, re.I | re.S)
         if low in ("a", "approve", "y", "yes"):
             return "approve", None
+        if m:                                   # "r the tiger faces left"
+            return "revise", m.group(1).strip()
         if low in ("r", "revise"):
-            fb = input("Your feedback (what should change)? > ").strip()
+            fb = ask(title + " - feedback", "What should change?", None, "",
+                     "text", "Your feedback (what should change)? > ")
             if fb:
                 return "revise", fb
         elif low == "e":
@@ -53,7 +130,8 @@ def review_gate(title, summary, artifact=None):
     print("\nPress Enter if it is good to go, or type your feedback "
           "(what is wrong / what to change).\n"
           "[e] I edited the file, reload it   [q] save & quit")
-    ans = input("> ").strip()
+    ans = ask(title, summary, artifact,
+              "Enter = good to go; or type your feedback", "review")
     if not ans or ans.lower() in ("a", "ok", "approve", "y", "yes"):
         return "approve", None
     if ans.lower() == "e":
@@ -85,12 +163,27 @@ class Project:
                       if self.state_file.exists() else {})
         for k, v in (("approved", {}), ("inputs", {}), ("keyframes", {}),
                      ("clips", {}), ("feedback_log", []), ("pending", {}),
-                     ("guidance", {})):
+                     ("guidance", {}), ("current", {}), ("run", {})):
             self.state.setdefault(k, v)
 
     # ---------- basics ----------
     def save(self):
-        self.state_file.write_text(json.dumps(self.state, indent=2))
+        tmp = self.state_file.with_suffix(".tmp")      # atomic: the dashboard
+        tmp.write_text(json.dumps(self.state, indent=2))   # never sees half a file
+        os.replace(tmp, self.state_file)
+
+    def set_status(self, stage, status, detail=""):
+        """What the studio is doing right now (shown live in the dashboard)."""
+        self.state["current"] = {"stage": stage, "status": status,
+                                 "detail": detail, "time": time.time()}
+        self.save()
+
+    def event(self, stage, kind, text="", **extra):
+        """Append to the timeline (events.jsonl) the dashboard displays."""
+        rec = {"time": time.time(), "stage": stage, "kind": kind,
+               "text": text, **extra}
+        with open(self.dir / "events.jsonl", "a", encoding="utf-8") as f:
+            f.write(json.dumps(rec, ensure_ascii=False) + "\n")
 
     def approved(self, stage):
         return self.state["approved"].get(stage, False)
@@ -101,7 +194,9 @@ class Project:
 
     def write_json(self, name, data):
         p = self.dir / name
-        p.write_text(json.dumps(data, indent=2, ensure_ascii=False))
+        tmp = p.with_suffix(p.suffix + ".tmp")
+        tmp.write_text(json.dumps(data, indent=2, ensure_ascii=False))
+        os.replace(tmp, p)
         return p
 
     def read_json(self, name, default=None):

@@ -12,6 +12,8 @@ from pathlib import Path
 
 import requests
 
+from . import approval
+
 # For each tag, the input names tried in order on the tagged node.
 FIELDS = {
     "@PROMPT": ["text", "prompt", "positive", "value"],
@@ -29,7 +31,8 @@ FIELDS = {
 
 
 class Comfy:
-    def __init__(self, url, poll_seconds=5, timeout_minutes=60):
+    def __init__(self, url, poll_seconds=5, timeout_minutes=60, mappings=None):
+        self.mappings = mappings or {}   # workflow path -> {"@TAG": "node.field"}
         self.url = url.rstrip("/")
         self.poll = poll_seconds
         self.timeout = timeout_minutes * 60
@@ -66,6 +69,7 @@ class Comfy:
             raise RuntimeError(f"ComfyUI rejected {label}: {r.text[:800]}")
         pid = r.json()["prompt_id"]
         print(f"  queued {label} ({pid[:8]}) ...", flush=True)
+        approval.emit("comfy_queued", label, job=pid[:8])
 
         start = time.time()
         while True:
@@ -77,7 +81,11 @@ class Comfy:
                     raise RuntimeError(f"{label} failed: "
                                        f"{json.dumps(status)[:800]}")
                 if status.get("completed", True):
-                    return self._download(entry.get("outputs", {}), out_dir)
+                    files = self._download(entry.get("outputs", {}), out_dir)
+                    approval.emit("comfy_done", label, job=pid[:8],
+                                  seconds=round(time.time() - start, 1),
+                                  files=len(files))
+                    return files
             if time.time() - start > self.timeout:
                 raise TimeoutError(f"{label} timed out")
             time.sleep(self.poll)
@@ -85,12 +93,21 @@ class Comfy:
     def _fill(self, wf, values, name):
         wf = copy.deepcopy(wf)
         found = set()
+        mapping = self.mappings.get(str(name), {})
+        for tag, targets in mapping.items():          # from config.yaml
+            if tag not in values:
+                continue
+            for target in ([targets] if isinstance(targets, str) else targets):
+                node_id, field = target.rsplit(".", 1)
+                if node_id in wf:
+                    wf[node_id].setdefault("inputs", {})[field] = values[tag]
+                    found.add(tag)
         for node in wf.values():
             title = node.get("_meta", {}).get("title", "")
             tags = [t for t in title.split() if t.startswith("@")]
             inputs = node.get("inputs", {})
             for tag in tags:            # e.g. "@WIDTH @HEIGHT"
-                if tag not in values:
+                if tag not in values or tag in mapping:
                     continue
                 for field in FIELDS.get(tag, [tag[1:].lower()]):
                     # skip inputs wired to another node (lists)

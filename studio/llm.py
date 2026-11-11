@@ -4,7 +4,11 @@ import json
 import re
 from pathlib import Path
 
+import time
+
 import anthropic
+
+from . import approval
 
 
 class LLM:
@@ -28,12 +32,19 @@ class LLM:
             kwargs["tools"] = [{"type": "web_search_20250305",
                                 "name": "web_search",
                                 "max_uses": self.web_search_max_uses}]
+        t0 = time.time()
         resp = self.client.messages.create(
             model=self.model, max_tokens=self.max_tokens,
             system=system + "\n\nReply with ONLY valid JSON, no prose, "
                             "no markdown fences.",
             messages=[{"role": "user", "content": content}], **kwargs)
         text = "".join(b.text for b in resp.content if b.type == "text")
+        u = getattr(resp, "usage", None)
+        approval.emit("llm_call", self.model, model=self.model,
+                      tokens_in=getattr(u, "input_tokens", 0) or 0,
+                      tokens_out=getattr(u, "output_tokens", 0) or 0,
+                      seconds=round(time.time() - t0, 1), web=bool(web_search),
+                      images=len(images or []))
         return parse_json(text)
 
 
