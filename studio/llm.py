@@ -61,9 +61,11 @@ class LLM:
 
     def _call(self, system, messages, kwargs, images):
         t0 = time.time()
-        resp = self.client.messages.create(
-            model=self.model, max_tokens=self.max_tokens, system=system,
-            messages=messages, **kwargs)
+        # Streaming: no 10-minute limit, so long replies (big scripts) work
+        with self.client.messages.stream(
+                model=self.model, max_tokens=self.max_tokens, system=system,
+                messages=messages, **kwargs) as stream:
+            resp = stream.get_final_message()
         text = "".join(b.text for b in resp.content if b.type == "text")
         u = getattr(resp, "usage", None)
         approval.emit("llm_call", self.model, model=self.model,
