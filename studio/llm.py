@@ -32,20 +32,46 @@ class LLM:
             kwargs["tools"] = [{"type": "web_search_20250305",
                                 "name": "web_search",
                                 "max_uses": self.web_search_max_uses}]
+        sys_text = (system + "\n\nReply with ONLY valid JSON, no prose, no "
+                    "markdown fences. Escape every double quote inside a "
+                    "string as \\\" (or use single quotes in the text).")
+        messages = [{"role": "user", "content": content}]
+        for attempt in range(3):
+            text, stop = self._call(sys_text, messages, kwargs, images)
+            if stop == "max_tokens":
+                raise RuntimeError(
+                    f"Claude's reply was cut off at max_tokens="
+                    f"{self.max_tokens}. Raise llm: max_tokens in config.yaml "
+                    "(e.g. 20000) and run 'resume'.")
+            try:
+                return parse_json(text)
+            except ValueError as e:
+                if attempt == 2:
+                    raise
+                print(f"  [llm] reply was not valid JSON ({e}); asking Claude "
+                      "to fix it ...", flush=True)
+                approval.emit("llm_retry", str(e)[:200])
+                messages = [{"role": "user", "content": content},
+                            {"role": "assistant", "content": text},
+                            {"role": "user", "content":
+                             f"That reply is not valid JSON: {e}. Return the "
+                             "same content again as valid JSON only. Escape "
+                             "double quotes inside strings."}]
+                kwargs = {}                     # no web search on the repair
+
+    def _call(self, system, messages, kwargs, images):
         t0 = time.time()
         resp = self.client.messages.create(
-            model=self.model, max_tokens=self.max_tokens,
-            system=system + "\n\nReply with ONLY valid JSON, no prose, "
-                            "no markdown fences.",
-            messages=[{"role": "user", "content": content}], **kwargs)
+            model=self.model, max_tokens=self.max_tokens, system=system,
+            messages=messages, **kwargs)
         text = "".join(b.text for b in resp.content if b.type == "text")
         u = getattr(resp, "usage", None)
         approval.emit("llm_call", self.model, model=self.model,
                       tokens_in=getattr(u, "input_tokens", 0) or 0,
                       tokens_out=getattr(u, "output_tokens", 0) or 0,
-                      seconds=round(time.time() - t0, 1), web=bool(web_search),
+                      seconds=round(time.time() - t0, 1), web=bool(kwargs),
                       images=len(images or []))
-        return parse_json(text)
+        return text, getattr(resp, "stop_reason", None)
 
 
 def parse_json(text):
