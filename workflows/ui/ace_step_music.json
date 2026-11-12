@@ -115,7 +115,7 @@
           ]
         }
       ],
-      "title": "@PROMPT @LYRICS @BPM",
+      "title": "@PROMPT @LYRICS @BPM @SEED @DURATION",
       "properties": {
         "Node name for S&R": "TextEncodeAceStepAudio1.5",
         "cnr_id": "comfy-core",
@@ -297,6 +297,7 @@
           ]
         }
       ],
+      "title": "@DURATION",
       "properties": {
         "Node name for S&R": "EmptyAceStep1.5LatentAudio",
         "cnr_id": "comfy-core",
@@ -372,6 +373,7 @@
           ]
         }
       ],
+      "title": "@SEED",
       "properties": {
         "Node name for S&R": "KSampler",
         "cnr_id": "comfy-core",
@@ -686,14 +688,6 @@
       "INT"
     ],
     [
-      261,
-      18,
-      0,
-      106,
-      0,
-      "AUDIO"
-    ],
-    [
       257,
       102,
       0,
@@ -708,6 +702,14 @@
       94,
       2,
       "FLOAT"
+    ],
+    [
+      261,
+      18,
+      0,
+      106,
+      0,
+      "AUDIO"
     ]
   ],
   "groups": [
@@ -753,8 +755,8 @@
     "ds": {
       "scale": 0.8264462809917354,
       "offset": [
-        546.6897917188414,
-        949.1134308999082
+        779.0097917188417,
+        1038.6534308999082
       ]
     },
     "frontendVersion": "1.59.1",
