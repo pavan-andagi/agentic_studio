@@ -1,7 +1,7 @@
 # ---- LLM used by the Trend, Planner, Script and Editing agents ----
 llm:
   model: claude-sonnet-5-5        # any Claude model string works here
-  max_tokens: 12000
+  max_tokens: 20000
   web_search_max_uses: 8          # Trend agent only
 
 # ---- Master agent: turns your feedback into proceed / go-back decisions ----
