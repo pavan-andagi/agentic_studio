@@ -23,6 +23,8 @@ FIELDS = {
     "@NEGATIVE": ["text", "prompt", "negative", "value"],
     "@SEED": ["seed", "noise_seed", "value"],
     "@IMAGE": ["image"],
+    "@IMAGE2": ["image"],
+    "@IMAGE3": ["image"],
     "@LAST_IMAGE": ["image"],
     "@VIDEO": ["video"],
     "@WIDTH": ["width", "value"],
@@ -93,8 +95,43 @@ class Comfy:
                 raise TimeoutError(f"{label} timed out")
             time.sleep(self.poll)
 
+    @staticmethod
+    def _prune(wf, tags):
+        """Remove nodes tagged with any of `tags` (e.g. an unused @IMAGE3
+        Load Image) and whatever only depended on them. A node that still
+        has other live inputs just loses the dangling input (optional
+        image slots such as image3 on the Qwen edit encoder)."""
+        dead = {k for k, n in wf.items()
+                if set(n.get("_meta", {}).get("title", "").split()) & tags}
+        changed = True
+        while changed:
+            changed = False
+            for k, n in list(wf.items()):
+                if k in dead:
+                    continue
+                links = {f: v for f, v in n.get("inputs", {}).items()
+                         if isinstance(v, list) and len(v) == 2
+                         and isinstance(v[0], str)}
+                bad = [f for f, v in links.items() if v[0] in dead]
+                if bad and len(bad) == len(links):
+                    dead.add(k)
+                    changed = True
+        for k in dead:
+            wf.pop(k, None)
+        for n in wf.values():
+            ins = n.get("inputs", {})
+            for f in [f for f, v in ins.items() if isinstance(v, list)
+                      and len(v) == 2 and isinstance(v[0], str)
+                      and v[0] in dead]:
+                ins.pop(f)
+        return wf
+
     def _fill(self, wf, values, name):
         wf = copy.deepcopy(wf)
+        unused = {t for t, v in values.items() if v is None}
+        if unused:                     # e.g. @IMAGE3 = None: drop that slot
+            wf = self._prune(wf, unused)
+            values = {t: v for t, v in values.items() if v is not None}
         found = set()
         mapping = self.mappings.get(str(name), {})
         for tag, targets in mapping.items():          # from config.yaml

@@ -127,7 +127,9 @@ def run(ctx, feedback=None, items=None):
     final = assemble(finished, p.dir / "final" / f"{p.dir.name}.mp4",
                      (size["width"], size["height"]), round(size["fps"]),
                      chained, keep_audio=(cfg.get("audio") or {}).get(
-                         "keep_clip_audio", False))
+                         "keep_clip_audio", False),
+                     transition=d.get("transition", "none"),
+                     transition_seconds=d.get("transition_seconds", 0.5))
     info, issues = validate(final)
 
     # ---- editing suggestions ----

@@ -13,21 +13,23 @@ from pathlib import Path
 import yaml
 
 from . import dashboard
-from .agents import audio, clips, images, master, planner, script, trend
+from .agents import audio, cast, clips, images, master, planner, script, trend
 from .agents.base import Ctx
 from .approval import STAGES, Project, ask, banner, bind, enable_web, review_gate
 from .comfy import Comfy
 from .llm import LLM
 
 AGENTS = {"trend": trend, "plan": planner, "script": script,
-          "images": images, "clips": clips, "audio": audio}
+          "cast": cast, "images": images, "clips": clips, "audio": audio}
 TITLES = {"trend": "1 Trend Identifier", "plan": "2 Project Planner",
-          "script": "3 Script / Plot", "images": "4 Image Creation",
-          "clips": "5 Clips & Editing", "audio": "6 Audio"}
+          "script": "3 Script / Plot", "cast": "4 Cast",
+          "images": "5 Image Creation", "clips": "6 Clips & Editing",
+          "audio": "7 Audio"}
 
 
 READS = {"trend": "channel brief", "plan": "1_trend_chosen.json",
-         "script": "2_plan.json", "images": "3_script.json (image prompts)",
+         "script": "2_plan.json", "cast": "2_plan.json (characters)",
+         "images": "3_script.json (image prompts) + cast/",
          "clips": "3_script.json + keyframes",
          "audio": "3_script.json (narration) + final/ video"}
 
@@ -113,7 +115,7 @@ def run_stage(ctx, stage):
 
 
 def needs_comfy(cfg, stage):
-    if stage in ("images", "clips"):
+    if stage in ("cast", "images", "clips"):
         return True
     a = cfg.get("audio") or {}
     return stage == "audio" and a.get("enabled", True) and any(

@@ -22,7 +22,7 @@ from pathlib import Path
 from urllib.parse import parse_qs, unquote, urlparse
 
 WEB = Path(__file__).parent / "web"
-STAGES = ["trend", "plan", "script", "images", "clips", "audio"]
+STAGES = ["trend", "plan", "script", "cast", "images", "clips", "audio"]
 IMG = {".png", ".jpg", ".jpeg", ".webp"}
 VID = {".mp4", ".webm", ".mov"}
 FILES = {"trends": "1_trends.json", "chosen": "1_trend_chosen.json",
@@ -130,6 +130,8 @@ def project_data(root, name):
         "console": tail(d / "console.log", 200),
         "candidates": candidates, "keyframes": keyframes, "takes": takes,
         "clips": clips, "sheets": images_in("sheets"),
+        "cast": {n: rel(Path(f)) for n, f in (st.get("cast") or {}).items()
+                 if f and Path(f).exists()},
         "final": sorted(rel(f) for f in (d / "final").glob("*")
                         if f.suffix.lower() in VID) if (d / "final").exists() else [],
         "previews": sorted(rel(f) for f in (d / "audio").glob("preview_*")

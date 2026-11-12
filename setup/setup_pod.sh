@@ -11,6 +11,9 @@ flock -n 9 || { echo "Setup is already running in another terminal; wait for it.
 find $W -path "*/.cache/huggingface/download/*" \( -name "*.lock" -o -name "*.incomplete" \) -delete 2>/dev/null
 FAILED=""
 get() {  # repo pattern dir : one pattern per call, 3 tries
+  # skip files that are already in the models folder (fast, safe reruns)
+  local f; f=$(find "$M" -name "$(basename "$2")" -size +1M -print -quit 2>/dev/null)
+  [ -n "$f" ] && { echo "have $(basename "$f")"; return 0; }
   for i in 1 2 3; do hf download "$1" --include "$2" --local-dir "$3" && return 0
     echo "retry $i: $2"; sleep 5; done; FAILED="$FAILED\n  $1 $2"; }
 place() {  # move downloaded files from the temp folder into model folders
@@ -42,6 +45,14 @@ get Comfy-Org/gemma-4 "*e2b_it_int8*" $M
 
 echo "== ACE-Step 1.5 (music, all-in-one turbo checkpoint) =="
 get Comfy-Org/ace_step_1.5_ComfyUI_files "checkpoints/ace_step_1.5_turbo_aio.safetensors" $M
+
+echo "== Qwen Image Edit 2511 (cast-consistent keyframes) =="
+get Comfy-Org/Qwen-Image-Edit_ComfyUI "split_files/diffusion_models/qwen_image_edit_2511_fp8mixed.safetensors" $T
+get Comfy-Org/Qwen-Image_ComfyUI "split_files/text_encoders/qwen_2.5_vl_7b_fp8_scaled.safetensors" $T
+get Comfy-Org/Qwen-Image_ComfyUI "split_files/vae/qwen_image_vae.safetensors" $T
+mkdir -p $M/loras
+get lightx2v/Qwen-Image-Edit-2511-Lightning "Qwen-Image-Edit-2511-Lightning-4steps-V1.0-bf16.safetensors" $M/loras
+place
 
 echo "== Video node packs =="
 cd $C/custom_nodes

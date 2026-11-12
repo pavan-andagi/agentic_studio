@@ -21,6 +21,85 @@ def needed(script):
             yield sh, "end"
 
 
+IMG_EXT = (".png", ".jpg", ".jpeg", ".webp")
+ORD = ["image 1", "image 2", "image 3"]
+
+
+def cast_for(ctx, sh):
+    """Characters in this shot that have an approved reference picture."""
+    cast = ctx.project.state.get("cast") or {}
+    return [c for c in (sh.get("characters") or [])
+            if cast.get(c) and Path(cast[c]).exists()]
+
+
+def use_edit(ctx, sh):
+    wf = ctx.cfg["comfy"]["workflows"].get("edit")
+    return bool(wf and Path(wf).exists() and cast_for(ctx, sh))
+
+
+def edit_prompt(names, scene, first_is_scene=False):
+    if first_is_scene:          # later pass: add people to an existing image
+        who = "; ".join(f"{n} is the person in {ORD[i + 1]}"
+                        for i, n in enumerate(names))
+        return (f"Keep image 1 exactly as it is: same scene, people, "
+                f"composition, camera and lighting. Add {', '.join(names)} "
+                f"into it ({who}), placed as described: {scene} Keep each "
+                f"added person's face, hairstyle, body and outfit exactly as "
+                f"in their reference image. Do not copy the reference "
+                f"background.")
+    who = "; ".join(f"{n} is the person in {ORD[i]}" for i, n in enumerate(names))
+    return (f"{who}. Create a new picture: {scene} Keep every person's face, "
+            f"hairstyle, body and outfit exactly as in their reference image. "
+            f"Do not copy the plain reference background.")
+
+
+def generate(ctx, sh, prompt, key, i, w, h):
+    """One candidate: plain Z-Image, or Qwen Edit with the cast pictures
+    (people beyond 3 are added in a second pass)."""
+    p, cfg = ctx.project, ctx.cfg
+    out = p.dir / "candidates" / key
+    seed = random.randint(1, 2**31)
+    if not use_edit(ctx, sh):
+        files = ctx.comfy.run(cfg["comfy"]["workflows"]["image"], {
+            "@PROMPT": prompt, "@SEED": seed, "@WIDTH": w, "@HEIGHT": h,
+            "@FILENAME": f"studio/{p.dir.name}_{key}"}, out,
+            label=f"{key} #{i + 1}")
+        return [f for f in files if f.suffix.lower() in IMG_EXT]
+    cast = p.state["cast"]
+    names = cast_for(ctx, sh)
+    first, rest = names[:3], names[3:]
+    refs = [ctx.comfy.upload(cast[n]) for n in first]
+    vals = {"@PROMPT": edit_prompt(first, prompt), "@SEED": seed,
+            "@WIDTH": w, "@HEIGHT": h,
+            "@FILENAME": f"studio/{p.dir.name}_{key}",
+            "@IMAGE": refs[0],
+            "@IMAGE2": refs[1] if len(refs) > 1 else None,
+            "@IMAGE3": refs[2] if len(refs) > 2 else None}
+    files = [f for f in ctx.comfy.run(cfg["comfy"]["workflows"]["edit"], vals,
+                                      out, label=f"{key} #{i + 1} (cast)")
+             if f.suffix.lower() in IMG_EXT]
+    while rest and files:                  # 4+ people: add two at a time
+        add, rest = rest[:2], rest[2:]
+        base = ctx.comfy.upload(files[0])
+        more = [ctx.comfy.upload(cast[n]) for n in add]
+        vals.update({"@PROMPT": edit_prompt(add, prompt, first_is_scene=True),
+                     "@SEED": random.randint(1, 2**31), "@IMAGE": base,
+                     "@IMAGE2": more[0],
+                     "@IMAGE3": more[1] if len(more) > 1 else None})
+        files = [f for f in ctx.comfy.run(
+            cfg["comfy"]["workflows"]["edit"], vals, out,
+            label=f"{key} #{i + 1} (+{', '.join(add)})")
+            if f.suffix.lower() in IMG_EXT]
+    return files[:1]
+
+
+def signature(ctx, sh, field):
+    """What this keyframe was made from: prompt + the cast pictures."""
+    cast = ctx.project.state.get("cast") or {}
+    refs = [f"{c}={cast[c]}" for c in cast_for(ctx, sh)] if use_edit(ctx, sh) else []
+    return sh[field] + ("|" + ",".join(refs) if refs else "")
+
+
 def rewrite(ctx, prompt, feedback):
     return ctx.llm.ask_json(REWRITE + rules(ctx.cfg) + "\n" + history(ctx),
                             f"Prompt:\n{prompt}\n\nFeedback: {feedback}"
@@ -37,7 +116,8 @@ def run(ctx, feedback=None, items=None):
 
     for sh, which in needed(script):
         key, field = f"{sh['id']}_{which}", f"{which}_image_prompt"
-        if key in done and used.get(key, sh[field]) != sh[field]:
+        sig = signature(ctx, sh, field)
+        if key in done and used.get(key, sig) != sig:
             done.pop(key)                     # the script changed this image
             p._drop_clips({sh["id"]})
         if key in done:
@@ -49,19 +129,18 @@ def run(ctx, feedback=None, items=None):
             print(f"\n[Image agent] {key}: generating {n} options ...")
             p.set_status("images", "working", f"generating {n} options for {key}")
             cands = []
+            who = cast_for(ctx, sh) if use_edit(ctx, sh) else []
+            if who:
+                print(f"  with cast references: {', '.join(who)}")
             for i in range(n):
-                files = ctx.comfy.run(cfg["comfy"]["workflows"]["image"], {
-                    "@PROMPT": sh[field], "@SEED": random.randint(1, 2**31),
-                    "@WIDTH": w, "@HEIGHT": h,
-                    "@FILENAME": f"studio/{p.dir.name}_{key}"},
-                    p.dir / "candidates" / key, label=f"{key} #{i + 1}")
-                cands += [f for f in files if f.suffix.lower() in
-                          (".png", ".jpg", ".jpeg", ".webp")]
+                cands += generate(ctx, sh, sh[field], key, i, w, h)
             sheet = image_grid(cands, p.dir / "sheets" / f"{key}.png")
             open_file(sheet)
             action, val = gate(
                 f"Keyframe {key}", f"Shot {sh['id']}: {sh['beat']}\n"
-                f"Prompt: {sh[field]}\nOptions: {sheet}", sheet,
+                f"Prompt: {sh[field]}\n"
+                + (f"Cast references used: {', '.join(who)}\n" if who else "")
+                + f"Options: {sheet}", sheet,
                 f"Type 1-{len(cands)} to pick, t for new options (same prompt),"
                 f" or a path to your own image.")
             if action == "pick" and val.isdigit() and 1 <= int(val) <= len(cands):
@@ -86,7 +165,7 @@ def run(ctx, feedback=None, items=None):
             dest = p.dir / "keyframes" / f"{key}{src.suffix}"
             shutil.copy(src, dest)
             done[key] = str(dest)
-            used[key] = sh[field]
+            used[key] = signature(ctx, sh, field)
             p.save()
             break
 

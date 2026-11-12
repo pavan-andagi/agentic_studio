@@ -1,7 +1,7 @@
 # ---- LLM used by the Trend, Planner, Script and Editing agents ----
 llm:
   model: claude-sonnet-5-5        # any Claude model string works here
-  max_tokens: 25000
+  max_tokens: 32000
   web_search_max_uses: 8          # Trend agent only
 
 # ---- Master agent: turns your feedback into proceed / go-back decisions ----
@@ -21,16 +21,24 @@ comfy:
     upscale: workflows/upscale_4k.json   # optional (RIFE + Real-ESRGAN)
     music: workflows/ace_step_music.json # ACE-Step 1.5 text-to-music
     ambience: workflows/ltx_t2a.json     # LTX-2.5 text-to-audio (audio-only)
+    edit: workflows/qwen_edit_2511.json  # Qwen Image Edit 2511: keyframes with cast references
 
 # ---- Defaults the Planner starts from (it can change them, you approve) ----
 defaults:
   aspect: "9:16"                  # 9:16 Reels/Shorts, 16:9 YouTube
-  image_size: [1088, 1920]
-  video_size: [1088, 1920]
+  image_size: [1056, 1920]        # same 9:16 shape as the video, 1.5x larger
+  video_size: [704, 1280]         # LTX needs multiples of 32 (half-res pass too)
+  transition: dissolve            # at hard cuts: none | dissolve | fadeblack
+  transition_seconds: 0.5         # chained shots always join seamlessly
   fps: 30
   max_clip_seconds: 5
   images_per_keyframe: 2          # Z-Image variants to choose from
   upscale_4k: false               # true = run the upscale workflow on approved clips
+
+# ---- Cast stage (4): one reference picture per character ----
+cast:
+  enabled: true                   # false = keyframes from text only
+  options: 3                      # candidates per character
 
 # ---- Audio stage (6): voice-over, music, ambience, final mix ----
 audio:

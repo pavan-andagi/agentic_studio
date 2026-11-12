@@ -6,7 +6,9 @@
 set -a; [ -f /workspace/studio.env ] && . /workspace/studio.env; set +a
 W=/workspace; S=$W/agentic_studio; LOG=$W/bootstrap.log
 exec > >(tee -a $LOG) 2>&1
-echo "==== bootstrap $(date) ===="
+echo; echo "################################################################"
+echo "==== bootstrap $(date)  (pod ${RUNPOD_POD_ID:-?}) ===="
+echo "################################################################"
 for v in HF_TOKEN ANTHROPIC_API_KEY; do
   [ -z "${!v}" ] && echo "WARNING: $v is not set (see setup/studio.env.example)"
 done
@@ -39,4 +41,21 @@ fi
 
 # 4. Check the workflows the agents need
 cd $S && python -m studio.check_workflows
-echo "==== READY: cd $S && python -m studio.main resume <project>  (or new) ===="
+
+# 5. Only say READY when everything really works on THIS pod
+MISSING=$(python - <<'PY'
+import importlib.util
+mods = ["anthropic", "yaml", "requests", "PIL", "soundfile", "kokoro",
+        "faster_whisper"]
+print(" ".join(m for m in mods if importlib.util.find_spec(m) is None))
+PY
+)
+COMFY=$(curl -s -o /dev/null -m 5 -w '%{http_code}' http://127.0.0.1:8188)
+if [ -z "$MISSING" ] && [ "$COMFY" = "200" ] && which ffmpeg espeak-ng >/dev/null; then
+  echo "==== READY (pod ${RUNPOD_POD_ID:-?}, $(date +%H:%M)): cd $S && python -m studio.main resume <project>  (or new) ===="
+else
+  echo "==== NOT READY (pod ${RUNPOD_POD_ID:-?}) ===="
+  [ -n "$MISSING" ] && echo "  missing Python packages: $MISSING  ->  pip install -r $S/requirements.txt \"kokoro>=0.9\" faster-whisper"
+  [ "$COMFY" != "200" ] && echo "  ComfyUI not answering on 8188  ->  bash $S/setup/start_comfy.sh"
+  which ffmpeg espeak-ng >/dev/null || echo "  missing ffmpeg or espeak-ng  ->  apt-get install -y ffmpeg espeak-ng"
+fi

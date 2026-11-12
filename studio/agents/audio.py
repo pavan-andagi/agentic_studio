@@ -53,6 +53,8 @@ def timeline(ctx, shots):
     """Start time and length of every shot in the assembled video."""
     p, d = ctx.project, ctx.cfg["defaults"]
     done, t, out = p.state["clips"], 0.0, {}
+    soft = d.get("transition", "none") in ("dissolve", "fadeblack")
+    T, prev_len = float(d.get("transition_seconds", 0.5)), 0.0
     for i, s in enumerate(shots):
         clip = Path(done[s["id"]])
         k4 = clip.with_name(f"{s['id']}_4k.mp4")
@@ -60,10 +62,14 @@ def timeline(ctx, shots):
             clip = k4
         info = probe(clip)
         length = info["duration"]
-        if s.get("start_from") == "previous_last_frame" and i > 0:
+        chained = s.get("start_from") == "previous_last_frame" and i > 0
+        if chained:
             length -= 1 / max(info["fps"], 1)           # dropped frame
+        elif i > 0 and soft and min(prev_len, length) > 2 * T:
+            t -= T                                      # dissolve overlap
         out[s["id"]] = (round(t, 3), round(length, 3))
         t += length
+        prev_len = length
     return out
 
 

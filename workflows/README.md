@@ -56,3 +56,37 @@ Test each workflow once by hand in ComfyUI before exporting.
     python -m studio.check_workflows
 
 lists the tags found in each file, so you can see nothing is missing.
+
+## qwen_edit_2511.json (Cast stage: consistent characters)
+
+Built from the ComfyUI template **Qwen Image Edit 2511** (Workflow →
+Browse Templates → Image). Models (setup_pod.sh downloads them):
+`qwen_image_edit_2511_fp8mixed.safetensors` (diffusion_models),
+`qwen_2.5_vl_7b_fp8_scaled.safetensors` (text_encoders),
+`qwen_image_vae.safetensors` (vae),
+`Qwen-Image-Edit-2511-Lightning-4steps-V1.0-bf16.safetensors` (loras).
+
+1. In **Load Diffusion Model** pick the `fp8mixed` file (the template
+   defaults to bf16, which is not downloaded).
+2. Turn the 4-step Lightning LoRA **on** (steps 4, CFG 1.0): multi-reference
+   edits are cleaner with it.
+3. Make sure there are **three Load Image nodes** feeding image1, image2,
+   image3 of the positive (and negative) TextEncodeQwenImageEditPlus nodes.
+   The studio removes the unused ones per shot automatically.
+4. Tag (inside packed nodes, if any):
+
+| Node | Title |
+| --- | --- |
+| Load Image → image1 | `@IMAGE` |
+| Load Image → image2 | `@IMAGE2` |
+| Load Image → image3 | `@IMAGE3` |
+| positive TextEncodeQwenImageEditPlus | `@PROMPT` |
+| KSampler | `@SEED` |
+| Save Image | `@FILENAME` |
+| EmptySD3LatentImage (if the template has one) | `@WIDTH @HEIGHT` |
+
+If the latent comes from VAE Encode of image 1 instead, the output keeps the
+shape of image 1; the cast pictures are made at the video's shape, so that
+is fine.
+5. Export (API) → `workflows/qwen_edit_2511.json`, and Export →
+   `workflows/ui/qwen_edit_2511.json`.

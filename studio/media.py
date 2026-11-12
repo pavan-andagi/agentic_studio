@@ -78,32 +78,60 @@ def last_frame(video, out_png):
 
 
 def assemble(clips, out_path, size, fps, drop_first_frame_of=(),
-             keep_audio=True):
+             keep_audio=True, transition="none", transition_seconds=0.5):
     """Join clips in order at one size/fps. Clips chained from a previous
-    clip's last frame drop their duplicate first frame (no stutter).
-    keep_audio=False drops the clips' own (generated) sound."""
+    clip's last frame drop their duplicate first frame and join seamlessly.
+    Hard cuts (a new keyframe) can get a soft transition:
+    transition = none | dissolve | fadeblack (ffmpeg xfade), lasting
+    transition_seconds. keep_audio=False drops the clips' own sound."""
     w, h = size
-    inputs, parts = [], []
+    xf = {"dissolve": "fade", "fadeblack": "fadeblack"}.get(transition)
+    T = float(transition_seconds) if xf else 0.0
+    inputs, parts, durs = [], [], []
     for i, c in enumerate(clips):
         inputs += ["-i", str(c)]
         trim = "trim=start_frame=1," if i in drop_first_frame_of else ""
         parts.append(f"[{i}:v]{trim}setpts=PTS-STARTPTS,"
                      f"scale={w}:{h}:force_original_aspect_ratio=decrease,"
                      f"pad={w}:{h}:(ow-iw)/2:(oh-ih)/2,fps={fps},"
-                     f"setsar=1[v{i}]")
+                     f"setsar=1,format=yuv420p,settb=AVTB[v{i}]")
+        d = probe(c)["duration"] - (1 / fps if i in drop_first_frame_of else 0)
+        durs.append(d)
     has_audio = keep_audio and all(probe(c)["audio"] for c in clips)
     if has_audio:
         for i, c in enumerate(clips):
             off = 1 / fps if i in drop_first_frame_of else 0
             parts.append(f"[{i}:a]atrim=start={off},asetpts=PTS-STARTPTS,"
                          f"aresample=48000[a{i}]")
-        chain = "".join(f"[v{i}][a{i}]" for i in range(len(clips)))
-        parts.append(f"{chain}concat=n={len(clips)}:v=1:a=1[v][a]")
-        maps = ["-map", "[v]", "-map", "[a]", "-c:a", "aac", "-b:a", "320k"]
+    # join left to right: concat at chained joins, xfade at hard cuts
+    cur_v, cur_a, cur_d = "v0", "a0", durs[0]
+    for i in range(1, len(clips)):
+        soft = T > 0 and i not in drop_first_frame_of and \
+            min(cur_d, durs[i]) > 2 * T
+        nv, na = f"jv{i}", f"ja{i}"
+        if soft:
+            parts.append(f"[{cur_v}][v{i}]xfade=transition={xf}:duration={T}:"
+                         f"offset={cur_d - T:.3f}[{nv}]")
+            if has_audio:
+                parts.append(f"[{cur_a}][a{i}]acrossfade=d={T}[{na}]")
+            cur_d += durs[i] - T
+        else:
+            parts.append(f"[{cur_v}][v{i}]concat=n=2:v=1:a=0[{nv}]")
+            if has_audio:
+                parts.append(f"[{cur_a}][a{i}]concat=n=2:v=0:a=1[{na}]")
+            cur_d += durs[i]
+        cur_v, cur_a = nv, na
+    if len(clips) == 1:
+        parts.append("[v0]null[vout]")
+        if has_audio:
+            parts.append("[a0]anull[aout]")
     else:
-        chain = "".join(f"[v{i}]" for i in range(len(clips)))
-        parts.append(f"{chain}concat=n={len(clips)}:v=1:a=0[v]")
-        maps = ["-map", "[v]"]
+        parts.append(f"[{cur_v}]null[vout]")
+        if has_audio:
+            parts.append(f"[{cur_a}]anull[aout]")
+    maps = ["-map", "[vout]"]
+    if has_audio:
+        maps += ["-map", "[aout]", "-c:a", "aac", "-b:a", "320k"]
     r = sh(["ffmpeg", "-v", "error", "-y", *inputs, "-filter_complex",
             ";".join(parts), *maps, "-c:v", "libx264", "-preset", "medium",
             "-crf", "16", "-pix_fmt", "yuv420p", "-movflags", "+faststart",

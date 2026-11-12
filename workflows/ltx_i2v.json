@@ -29,19 +29,6 @@
       "ver": "0.8.2"
     }
   },
-  "403": {
-    "inputs": {
-      "aspect_ratio": "16:9 (Widescreen)",
-      "megapixels": 0.9,
-      "multiple": 32
-    },
-    "class_type": "ResolutionSelector",
-    "_meta": {
-      "title": "Resolution Selector",
-      "cnr_id": "comfy-core",
-      "ver": "0.30.0"
-    }
-  },
   "398:393": {
     "inputs": {
       "clip_name": "gemma4_e2b_it_int8_convrot.safetensors",
@@ -245,14 +232,11 @@
   },
   "398:372": {
     "inputs": {
-      "value": [
-        "403",
-        0
-      ]
+      "value": 704
     },
     "class_type": "PrimitiveInt",
     "_meta": {
-      "title": "Width",
+      "title": "@WIDTH",
       "cnr_id": "comfy-core",
       "ver": "0.16.3"
     }
@@ -287,14 +271,11 @@
   },
   "398:360": {
     "inputs": {
-      "value": [
-        "403",
-        1
-      ]
+      "value": 1280
     },
     "class_type": "PrimitiveInt",
     "_meta": {
-      "title": "Height",
+      "title": "@HEIGHT",
       "cnr_id": "comfy-core",
       "ver": "0.16.3"
     }

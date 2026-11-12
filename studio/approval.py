@@ -9,7 +9,7 @@ import time
 import uuid
 from pathlib import Path
 
-STAGES = ["trend", "plan", "script", "images", "clips", "audio"]
+STAGES = ["trend", "plan", "script", "cast", "images", "clips", "audio"]
 WEB = {"project": None}      # set when the dashboard is on
 ACTIVE = {"project": None}   # the project being run (for event hooks)
 
@@ -224,8 +224,24 @@ class Project:
         kf, clips = self.state["keyframes"], self.state["clips"]
         if target in ("trend", "plan"):
             self.state["audio"] = {}            # new story: new sound
+            self.state["cast"] = {}             # and new characters
         if target == "audio":
             pass                                # sound only: keep the clips
+        elif target == "cast":
+            # items = character names (empty = everyone): redo their
+            # pictures and every keyframe/clip they appear in
+            cast = self.state.setdefault("cast", {})
+            names = set(items) or set(cast)
+            for n in names:
+                cast.pop(n, None)
+            hit = set()
+            for s in self.read_json("3_script.json", {"shots": []})["shots"]:
+                if names & set(s.get("characters") or []):
+                    for w in ("start", "end"):
+                        kf.pop(f"{s['id']}_{w}", None)
+                    hit.add(s["id"])
+            if hit:
+                self._drop_clips(hit)
         elif target in ("trend", "plan") or (target == "script" and not items):
             kf.clear()
             clips.clear()

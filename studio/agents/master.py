@@ -16,6 +16,8 @@ Pipeline stages and what each one owns:
 - script: shot list, shot modes and durations, all image and motion
           prompts, bubbles, captions
 - images: the keyframe images (look, composition, consistency)
+- cast:   the reference picture of each character (face, hair, outfit);
+          used for every keyframe that character appears in
 - clips:  the generated clips, timing, assembly, edit notes
 - audio:  voice-over (narration wording, timing, voice), music,
           ambience, volume levels and the final mix. Narration wording
@@ -32,6 +34,10 @@ Steps:
    - a character looks different in every shot because the plan never
      locked a clear description -> plan
    - the human no longer likes the idea itself -> trend
+   - a character looks wrong or different from what the human wants
+     (face, hair, age, outfit) -> cast, items = that character's name;
+     only a single keyframe is off while the cast picture is right ->
+     images, items = that shot
    - music too loud, wrong mood, a narration line too long, another
      voice -> audio (never images/clips for a sound problem)
 3. Choose the EARLIEST stage that fixes the root cause with the least
@@ -45,7 +51,7 @@ If the feedback is only a small note that later stages can handle (e.g.
 FORMAT = """Return JSON:
 {"understanding": str,             # the human's concern, in one line
  "verdict": "proceed" | "revisit",
- "target_stage": "trend|plan|script|images|clips|audio" | null,
+ "target_stage": "trend|plan|script|cast|images|clips|audio" | null,
  "affected_items": [str],          # shot ids like "s03"; empty = all
  "root_cause": str,
  "reasoning": str,                 # why this stage, briefly

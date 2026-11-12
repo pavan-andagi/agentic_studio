@@ -9,10 +9,12 @@ NEEDED = {"image": ["@PROMPT", "@SEED"],
           "flf2v": ["@PROMPT", "@IMAGE", "@LAST_IMAGE", "@SEED"],
           "upscale": ["@VIDEO"],
           "music": ["@PROMPT", "@SEED", "@DURATION"],
-          "ambience": ["@PROMPT", "@SEED"]}
+          "ambience": ["@PROMPT", "@SEED"],
+          "edit": ["@PROMPT", "@IMAGE", "@IMAGE2", "@IMAGE3", "@SEED"]}
 OPTIONAL = {"upscale": "only needed with upscale_4k: true",
             "music": "only needed with audio: music: enabled",
-            "ambience": "only needed with audio: ambience: enabled"}
+            "ambience": "only needed with audio: ambience: enabled",
+            "edit": "only needed for consistent characters (Cast stage)"}
 
 cfg = yaml.safe_load(Path("config.yaml").read_text())
 maps = cfg["comfy"].get("mappings") or {}
