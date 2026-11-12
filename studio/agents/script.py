@@ -14,12 +14,17 @@ FORMAT = """Return JSON:
   "start_from": "new_keyframe" | "previous_last_frame",
   "start_image_prompt": str|null, "end_image_prompt": str|null,
   "motion_prompt": str, "bubble_text": str|null,
-  "bubble_type": "speech"|"thought"|null, "edit_note": str}],
+  "bubble_type": "speech"|"thought"|null, "narration": str|null,
+  "edit_note": str}],
  "voiceover": str|null,
  "captions": {"instagram": str, "youtube_title": str,
               "youtube_description": str, "hashtags": [str]}}
 Use "previous_last_frame" when a shot continues the previous one without
-a cut (then start_image_prompt is null). Shot ids: s01, s02, ..."""
+a cut (then start_image_prompt is null). Shot ids: s01, s02, ...
+narration = the voice-over spoken during that shot (null = silence; leave
+room to breathe). At most about 2.5 words per second of the shot's
+duration; a sentence may continue into the next shot. "voiceover" = all
+lines joined. If the plan has no voice-over, every narration is null."""
 
 
 def summarize(s):
@@ -29,8 +34,10 @@ def summarize(s):
                else "new keyframe")
         bub = (f'\n     {sh["bubble_type"]} bubble: "{sh["bubble_text"]}"'
                if sh.get("bubble_text") else "")
+        vo = (f'\n     narration: "{sh["narration"]}"'
+              if sh.get("narration") else "")
         out.append(f"{sh['id']} [{sh['mode']}, {sh['duration']}s, {src}] "
-                   f"{sh['beat']}{bub}")
+                   f"{sh['beat']}{bub}{vo}")
     total = sum(sh["duration"] for sh in s["shots"])
     return ("\n".join(out) + f"\n\nTotal: {len(s['shots'])} shots, ~{total}s"
             f"\nYouTube title: {s['captions']['youtube_title']}")

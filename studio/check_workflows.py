@@ -7,14 +7,19 @@ import yaml
 NEEDED = {"image": ["@PROMPT", "@SEED"],
           "i2v": ["@PROMPT", "@IMAGE", "@SEED"],
           "flf2v": ["@PROMPT", "@IMAGE", "@LAST_IMAGE", "@SEED"],
-          "upscale": ["@VIDEO"]}
+          "upscale": ["@VIDEO"],
+          "music": ["@PROMPT", "@SEED", "@DURATION"],
+          "ambience": ["@PROMPT", "@SEED"]}
+OPTIONAL = {"upscale": "only needed with upscale_4k: true",
+            "music": "only needed with audio: music: enabled",
+            "ambience": "only needed with audio: ambience: enabled"}
 
 cfg = yaml.safe_load(Path("config.yaml").read_text())
 maps = cfg["comfy"].get("mappings") or {}
 for kind, path in cfg["comfy"]["workflows"].items():
     p = Path(path)
     if not p.exists():
-        opt = " (optional: only needed with upscale_4k: true)" if kind == "upscale" else ""
+        opt = f" (optional: {OPTIONAL[kind]})" if kind in OPTIONAL else ""
         print(f"{kind:8} {path}: MISSING FILE{opt}")
         continue
     wf = json.loads(p.read_text())

@@ -26,15 +26,16 @@ Production rules (follow strictly):
 - Match duration to the action (too long = slow motion). Add "real-time
   speed, natural pace" unless slow motion is wanted.
 - Motion prompts start with "Use the provided start image as the first
-  frame." (I2V), include a "Sound:" line, and end "No text, no black
-  frames."
+  frame." (I2V) and end "No text, no black frames." The clips' own
+  generated sound is muted; real sound is made in the Audio stage.
 - For chained shots, a shot can start from the previous clip's last frame
   (start_from = "previous_last_frame") for continuity.
 - Never copy existing films, artworks, logos, celebrities or copyrighted
   characters; mythology and public-domain stories are fine. Content must
   be suitable for the stated audience (kids content: gentle, no gore).
-- Speech/thought bubbles, titles and music are added in the editor, not
-  generated.
+- Speech/thought bubbles and titles are added in the editor. Narration
+  (Kokoro TTS), music (ACE-Step) and ambience (LTX audio) are made in
+  the Audio stage, after the clips.
 """
 
 

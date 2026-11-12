@@ -40,10 +40,16 @@ get $L "*spatial-upscaler*" $M
 get $L "*duration-head*" $M
 get Comfy-Org/gemma-4 "*e2b_it_int8*" $M
 
+echo "== ACE-Step 1.5 (music, all-in-one turbo checkpoint) =="
+get Comfy-Org/ace_step_1.5_ComfyUI_files "checkpoints/ace_step_1.5_turbo_aio.safetensors" $M
+
 echo "== Video node packs =="
 cd $C/custom_nodes
 [ -d ComfyUI-VideoHelperSuite ] || git clone https://github.com/Kosinkadink/ComfyUI-VideoHelperSuite
 pip install -r ComfyUI-VideoHelperSuite/requirements.txt
+# LTX audio-only (text-to-audio) nodes for the ambience workflow
+[ -d ComfyUI-LTXVideo ] || git clone https://github.com/Lightricks/ComfyUI-LTXVideo
+[ -f ComfyUI-LTXVideo/requirements.txt ] && pip install -r ComfyUI-LTXVideo/requirements.txt
 if [ "$WITH_4K" = "1" ]; then
   echo "== 4K / 60 fps tools =="
   [ -d ComfyUI-Frame-Interpolation ] || git clone https://github.com/Fannovel16/ComfyUI-Frame-Interpolation
@@ -54,6 +60,11 @@ fi
 echo "== Studio dependencies =="
 [ -f $W/agentic_studio/requirements.txt ] && pip install -r $W/agentic_studio/requirements.txt
 which ffmpeg >/dev/null || (apt-get update -qq && apt-get install -y -qq ffmpeg)
+echo "== Voice-over (Kokoro TTS) =="
+which espeak-ng >/dev/null || (apt-get update -qq && apt-get install -y -qq espeak-ng)
+pip install "kokoro>=0.9" soundfile
+echo "== Dashboard voice (Whisper speech-to-text) =="
+pip install faster-whisper
 
 rm -rf $W/.cache/huggingface ~/.cache/huggingface/hub
 echo "== Models =="; ls -lh $M/diffusion_models $M/text_encoders $M/vae 2>/dev/null | grep -v "^total"

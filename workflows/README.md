@@ -22,6 +22,14 @@ carry several tags, separated by spaces (e.g. `@WIDTH @HEIGHT`).
 | `@FPS` | the LTX node with `frame_rate` | fps from config |
 | `@VIDEO` | **Load Video (Upload) 🎥🅥🅗🅢** (upscale workflow) | uploaded clip |
 | `@FILENAME` | **Save Image / Save Video / Video Combine** | output name |
+| `@LYRICS` | the ACE-Step text-encode node (music) | `[instrumental]` |
+| `@BPM` | the ACE-Step node with `bpm` (if it has one) | tempo from the Audio agent |
+| `@FRAMES` | the LTX audio latent node with `length` in frames (ambience) | seconds × 25, as 8k+1 |
+
+For the audio workflows: `@PROMPT` on the ACE-Step encoder fills its
+`tags` field; `@DURATION` fills `seconds`/`duration`; `@FILENAME` goes on
+**Save Audio**. On the LTX audio workflow, tag the length with `@FRAMES`,
+**not** `@DURATION` (that node counts frames, not seconds).
 
 Tags that a workflow doesn't contain are simply left at the workflow's own
 settings (the console prints a note). For example, if LTX's size comes
@@ -37,6 +45,8 @@ tag width/height in the video workflows.
 | `z_image_t2i.json` | Z-Image Turbo: Text to Image |
 | `ltx_i2v.json` | LTX-2.5: Image to Video (Int8) |
 | `ltx_flf2v.json` | LTX-2.5: FLF2V (Int8) |
+| `ace_step_music.json` | ComfyUI template **ACE-Step 1.5 Music Generation AIO** (uses `ace_step_1.5_turbo_aio.safetensors`) |
+| `ltx_t2a.json` | LTX **Text-to-Audio** workflow (ComfyUI-LTXVideo, `LTXV Audio Only Model`), switched to your int8 distilled LTX-2.5 model |
 | `upscale_4k.json` | your 1080p→4K workflow: Load Video (Upload) + Meta Batch Manager (30) → RIFE ×2 → Real-ESRGAN ×2 → Video Combine (h264-mp4, 60 fps, crf 16) |
 
 Test each workflow once by hand in ComfyUI before exporting.

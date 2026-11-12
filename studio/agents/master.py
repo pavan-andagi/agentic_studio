@@ -17,6 +17,9 @@ Pipeline stages and what each one owns:
           prompts, bubbles, captions
 - images: the keyframe images (look, composition, consistency)
 - clips:  the generated clips, timing, assembly, edit notes
+- audio:  voice-over (narration wording, timing, voice), music,
+          ambience, volume levels and the final mix. Narration wording
+          is fixed HERE, not in script, so the clips are not redone.
 
 Steps:
 1. Understand exactly what the human is unhappy with.
@@ -29,6 +32,8 @@ Steps:
    - a character looks different in every shot because the plan never
      locked a clear description -> plan
    - the human no longer likes the idea itself -> trend
+   - music too loud, wrong mood, a narration line too long, another
+     voice -> audio (never images/clips for a sound problem)
 3. Choose the EARLIEST stage that fixes the root cause with the least
    rework, and limit it to the affected shots when possible.
 4. Write precise instructions for that stage's agent, combining the
@@ -40,7 +45,7 @@ If the feedback is only a small note that later stages can handle (e.g.
 FORMAT = """Return JSON:
 {"understanding": str,             # the human's concern, in one line
  "verdict": "proceed" | "revisit",
- "target_stage": "trend|plan|script|images|clips" | null,
+ "target_stage": "trend|plan|script|images|clips|audio" | null,
  "affected_items": [str],          # shot ids like "s03"; empty = all
  "root_cause": str,
  "reasoning": str,                 # why this stage, briefly

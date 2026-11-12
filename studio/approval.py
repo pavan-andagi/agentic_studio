@@ -9,7 +9,7 @@ import time
 import uuid
 from pathlib import Path
 
-STAGES = ["trend", "plan", "script", "images", "clips"]
+STAGES = ["trend", "plan", "script", "images", "clips", "audio"]
 WEB = {"project": None}      # set when the dashboard is on
 ACTIVE = {"project": None}   # the project being run (for event hooks)
 
@@ -222,7 +222,11 @@ class Project:
         for s in STAGES[STAGES.index(target):]:
             self.state["approved"][s] = False
         kf, clips = self.state["keyframes"], self.state["clips"]
-        if target in ("trend", "plan") or (target == "script" and not items):
+        if target in ("trend", "plan"):
+            self.state["audio"] = {}            # new story: new sound
+        if target == "audio":
+            pass                                # sound only: keep the clips
+        elif target in ("trend", "plan") or (target == "script" and not items):
             kf.clear()
             clips.clear()
         else:

@@ -13,22 +13,23 @@ from pathlib import Path
 import yaml
 
 from . import dashboard
-from .agents import clips, images, master, planner, script, trend
+from .agents import audio, clips, images, master, planner, script, trend
 from .agents.base import Ctx
 from .approval import STAGES, Project, ask, banner, bind, enable_web, review_gate
 from .comfy import Comfy
 from .llm import LLM
 
 AGENTS = {"trend": trend, "plan": planner, "script": script,
-          "images": images, "clips": clips}
+          "images": images, "clips": clips, "audio": audio}
 TITLES = {"trend": "1 Trend Identifier", "plan": "2 Project Planner",
           "script": "3 Script / Plot", "images": "4 Image Creation",
-          "clips": "5 Clips & Editing"}
+          "clips": "5 Clips & Editing", "audio": "6 Audio"}
 
 
 READS = {"trend": "channel brief", "plan": "1_trend_chosen.json",
          "script": "2_plan.json", "images": "3_script.json (image prompts)",
-         "clips": "3_script.json + keyframes"}
+         "clips": "3_script.json + keyframes",
+         "audio": "3_script.json (narration) + final/ video"}
 
 
 def stage_name(i):
@@ -111,6 +112,14 @@ def run_stage(ctx, stage):
         return target, its, d["instructions"]
 
 
+def needs_comfy(cfg, stage):
+    if stage in ("images", "clips"):
+        return True
+    a = cfg.get("audio") or {}
+    return stage == "audio" and a.get("enabled", True) and any(
+        (a.get(k) or {}).get("enabled", True) for k in ("music", "ambience"))
+
+
 class Tee:
     """Copy everything printed to a project log the dashboard can show."""
 
@@ -173,7 +182,7 @@ def main():
              len(STAGES))
     while i < len(STAGES):
         stage = STAGES[i]
-        if stage in ("images", "clips") and not comfy.alive():
+        if needs_comfy(cfg, stage) and not comfy.alive():
             sys.exit(f"ComfyUI is not reachable at {cfg['comfy']['url']}. "
                      "Start it (or the SSH tunnel) and run 'resume'.")
         decision = run_stage(ctx, stage)
@@ -190,7 +199,8 @@ def main():
     p.set_status(None, "done", "All stages approved")
     p.event("clips", "done", "Pipeline finished")
     banner("DONE")
-    print(f"Final video: {p.dir / 'final'}\nEdit notes: "
+    print(f"Final video: {p.state.get('audio', {}).get('final') or p.dir / 'final'}"
+          f"\nEdit notes: "
           f"{p.dir / '5_edit_notes.json'}\nFeedback log: {p.state_file}")
 
 

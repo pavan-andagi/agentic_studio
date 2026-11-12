@@ -22,12 +22,12 @@ from pathlib import Path
 from urllib.parse import parse_qs, unquote, urlparse
 
 WEB = Path(__file__).parent / "web"
-STAGES = ["trend", "plan", "script", "images", "clips"]
+STAGES = ["trend", "plan", "script", "images", "clips", "audio"]
 IMG = {".png", ".jpg", ".jpeg", ".webp"}
 VID = {".mp4", ".webm", ".mov"}
 FILES = {"trends": "1_trends.json", "chosen": "1_trend_chosen.json",
          "plan": "2_plan.json", "script": "3_script.json",
-         "edit_notes": "5_edit_notes.json"}
+         "edit_notes": "5_edit_notes.json", "audio": "6_audio.json"}
 
 
 def read_json(path, default=None):
@@ -132,6 +132,9 @@ def project_data(root, name):
         "clips": clips, "sheets": images_in("sheets"),
         "final": sorted(rel(f) for f in (d / "final").glob("*")
                         if f.suffix.lower() in VID) if (d / "final").exists() else [],
+        "previews": sorted(rel(f) for f in (d / "audio").glob("preview_*")
+                           if f.suffix.lower() in VID)
+        if (d / "audio").exists() else [],
         "now": time.time()}
     return data
 
@@ -219,6 +222,8 @@ class Handler(BaseHTTPRequestHandler):
         if u.path in ("/", "/index.html"):
             return self._send(200, (WEB / "index.html").read_bytes(),
                               "text/html; charset=utf-8")
+        if u.path == "/api/voice":
+            return self._send(200, voice_caps())
         if u.path == "/api/projects":
             names = list_projects(self.root)
             default = self.default if self.default in names else (names[0] if names else None)
@@ -241,6 +246,10 @@ class Handler(BaseHTTPRequestHandler):
         u = urlparse(self.path)
         if not self._authorized(parse_qs(u.query)):
             return self._send(401, {"error": "bad key"})
+        if u.path == "/api/transcribe":
+            return self._transcribe()
+        if u.path == "/api/speak":
+            return self._speak()
         if u.path != "/api/answer":
             return self._send(404, {"error": "not found"})
         try:
@@ -257,6 +266,64 @@ class Handler(BaseHTTPRequestHandler):
                                    "text": str(body.get("text", ""))}))
         os.replace(tmp, d / "response.json")
         return self._send(200, {"ok": True})
+
+
+    # ---------- voice ----------
+    def _body(self, limit):
+        n = int(self.headers.get("Content-Length", 0) or 0)
+        if n <= 0 or n > limit:
+            return None
+        return self.rfile.read(n)
+
+    def _transcribe(self):
+        """Browser recording (webm/ogg/mp4) -> text, with Whisper on the pod."""
+        from . import stt
+        if not stt.available():
+            return self._send(501, {"error": "faster-whisper not installed"})
+        data = self._body(15_000_000)
+        if not data:
+            return self._send(400, {"error": "empty or too long recording"})
+        ctype = self.headers.get("Content-Type", "")
+        suffix = (".ogg" if "ogg" in ctype else ".mp4" if "mp4" in ctype
+                  else ".wav" if "wav" in ctype else ".webm")
+        try:
+            return self._send(200, {"text": stt.transcribe(data, suffix)})
+        except Exception as e:                      # noqa: BLE001
+            return self._send(500, {"error": f"transcription failed: {e}"})
+
+    def _speak(self):
+        """Text -> WAV with Kokoro (the same TTS as the voice-over)."""
+        from . import tts
+        if not tts_available():
+            return self._send(501, {"error": "kokoro not installed"})
+        try:
+            body = json.loads(self._body(50_000) or b"{}")
+        except ValueError:
+            return self._send(400, {"error": "bad json"})
+        text = re.sub(r"\s+", " ", str(body.get("text", ""))).strip()[:1500]
+        if not text:
+            return self._send(400, {"error": "no text"})
+        voice = os.environ.get("STUDIO_DASH_VOICE", "af_heart")
+        with SPEAK_LOCK:
+            try:
+                wav = tts.say(text, self.root / ".voice", voice, 1.05)
+            except Exception as e:                  # noqa: BLE001
+                return self._send(500, {"error": f"speech failed: {e}"})
+        return self._send(200, wav.read_bytes(), "audio/wav")
+
+
+SPEAK_LOCK = threading.Lock()
+
+
+def tts_available():
+    import importlib.util
+    return (importlib.util.find_spec("kokoro") is not None
+            and importlib.util.find_spec("soundfile") is not None)
+
+
+def voice_caps():
+    from . import stt
+    return {"stt": stt.available(), "tts": tts_available()}
 
 
 def start(root="projects", port=8765, token=None, default=None, host=None):

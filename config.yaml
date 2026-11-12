@@ -19,6 +19,8 @@ comfy:
     i2v: workflows/ltx_i2v.json
     flf2v: workflows/ltx_flf2v.json
     upscale: workflows/upscale_4k.json   # optional (RIFE + Real-ESRGAN)
+    music: workflows/ace_step_music.json # ACE-Step 1.5 text-to-music
+    ambience: workflows/ltx_t2a.json     # LTX-2.5 text-to-audio (audio-only)
 
 # ---- Defaults the Planner starts from (it can change them, you approve) ----
 defaults:
@@ -29,5 +31,29 @@ defaults:
   max_clip_seconds: 5
   images_per_keyframe: 2          # Z-Image variants to choose from
   upscale_4k: false               # true = run the upscale workflow on approved clips
+
+# ---- Audio stage (6): voice-over, music, ambience, final mix ----
+audio:
+  enabled: true                   # false = no sound stage at all
+  keep_clip_audio: false          # LTX's own clip sound (usually noise)
+  clip_audio_db: -12              # only used when keep_clip_audio: true
+  loudness_lufs: -14              # YouTube / Instagram loudness
+  duck_music: true                # music gets quieter under the voice
+  voiceover:
+    enabled: true
+    voice: am_michael             # Kokoro voice id (bm_george = British)
+    speed: 1.0
+    max_words_per_second: 2.5
+    lead_in: 0.3                  # seconds after a shot starts
+    device: cpu                   # Kokoro is tiny; keeps the GPU for ComfyUI
+  music:
+    enabled: true
+    options: 2                    # versions to choose from
+    level_db: -16                 # relative to the voice
+  ambience:
+    enabled: true
+    options: 2
+    level_db: -20
+    max_seconds: 20               # generated once, looped with crossfades
 
 projects_dir: projects

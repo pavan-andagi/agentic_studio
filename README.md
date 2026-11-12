@@ -157,3 +157,19 @@ All JSON files are editable: change anything by hand at a gate, press
   (use Meta Batch Manager in it to avoid running out of RAM).
 - Licenses: Z-Image Turbo and LTX-2.5 terms differ; the planner lists
   risks, but check each model's license before monetizing.
+
+## Voice in the dashboard
+
+In the review panel: **🎤 Speak** records your answer, Whisper on the pod
+turns it into text (feedback goes into the box for you to check; short
+commands like "approve", "option two", "retake", "skip" become the matching
+button). **🔊 Listen** reads the open question aloud with Kokoro; the Master
+tab can read its decision too. "Read new questions aloud" in the header
+speaks every new review as it arrives.
+
+- The microphone only works over **https** (the RunPod proxy link) or
+  localhost; the browser asks for permission once.
+- "Send clear commands right away" skips the extra click for commands;
+  free-form feedback is always shown first so you can correct it.
+- Without faster-whisper on the pod, Chrome/Edge fall back to the browser's
+  own speech recognition (that sends your audio to the browser vendor).

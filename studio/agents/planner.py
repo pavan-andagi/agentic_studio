@@ -7,7 +7,10 @@ RELOAD = "__reload__"
 SYSTEM = """You are the Producer/Planner of a faceless AI video channel.
 Turn the chosen trend into a complete, realistic production plan for this
 pipeline: Z-Image Turbo keyframes -> LTX-2.5 clips -> optional 4K/60fps
-finishing in ComfyUI -> assembly and editing. Lock the visual style and
+finishing in ComfyUI -> assembly -> audio (voice-over with Kokoro TTS,
+original music with ACE-Step, ambience with LTX audio). In audio_plan say
+whether there is a voice-over and its tone, the music mood, and the
+ambience. Lock the visual style and
 the characters so every later agent reuses them word for word."""
 
 FORMAT = """Return JSON:

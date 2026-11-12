@@ -126,7 +126,8 @@ def run(ctx, feedback=None, items=None):
                if s["start_from"] == "previous_last_frame" and i > 0]
     final = assemble(finished, p.dir / "final" / f"{p.dir.name}.mp4",
                      (size["width"], size["height"]), round(size["fps"]),
-                     chained)
+                     chained, keep_audio=(cfg.get("audio") or {}).get(
+                         "keep_clip_audio", False))
     info, issues = validate(final)
 
     # ---- editing suggestions ----

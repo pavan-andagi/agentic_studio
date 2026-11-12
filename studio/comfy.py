@@ -16,7 +16,10 @@ from . import approval
 
 # For each tag, the input names tried in order on the tagged node.
 FIELDS = {
-    "@PROMPT": ["text", "prompt", "positive", "value"],
+    "@PROMPT": ["text", "prompt", "positive", "tags", "value"],
+    "@LYRICS": ["lyrics"],
+    "@BPM": ["bpm"],
+    "@FRAMES": ["length", "frames", "frames_number"],
     "@NEGATIVE": ["text", "prompt", "negative", "value"],
     "@SEED": ["seed", "noise_seed", "value"],
     "@IMAGE": ["image"],
@@ -24,7 +27,7 @@ FIELDS = {
     "@VIDEO": ["video"],
     "@WIDTH": ["width", "value"],
     "@HEIGHT": ["height", "value"],
-    "@DURATION": ["duration", "length", "value"],
+    "@DURATION": ["duration", "seconds", "length", "value"],
     "@FPS": ["frame_rate", "fps", "value"],
     "@FILENAME": ["filename_prefix"],
 }
