@@ -1,5 +1,6 @@
 """Agent 4 - Image Creation: Z-Image Turbo keyframes, human picks each."""
 import random
+import re
 import shutil
 from pathlib import Path
 
@@ -40,6 +41,30 @@ KEEP = {"character": ("Keep every person's face, hairstyle, body and outfit "
 
 def kind_of(ctx, name):
     return (ctx.project.state.get("cast_kinds") or {}).get(name, "character")
+
+
+def strip_locked(ctx, scene, names):
+    """Remove the locked descriptions of subjects that are supplied as
+    reference pictures.
+
+    The Script agent copies each locked description into the image prompt
+    word for word. That is right for plain text-to-image, but when the
+    same subject also arrives as a reference picture the text competes
+    with the image: Qwen Image Edit is an instruction model and a
+    500-word scene description dilutes the references badly. Subjects
+    WITHOUT a reference keep their description."""
+    plan = ctx.project.read_json("2_plan.json") or {}
+    for key in ("characters", "locations", "props"):
+        for c in plan.get(key) or []:
+            n, d = c.get("name"), c.get("locked_description")
+            if n in names and d and d in scene:
+                scene = scene.replace(d, n)          # keep the sentence whole
+                # "Theo, Theo, stands" -> "Theo stands"
+                e = re.escape(n)
+                scene = re.sub(rf"\b{e}\b[,\s]+{e}\b", n, scene)
+    scene = re.sub(r",\s*(?=[,.])", "", scene)
+    scene = re.sub(r"\s{2,}", " ", scene)
+    return re.sub(r"\s+([,.])", r"\1", scene).strip()
 
 
 def cast_for(ctx, sh):
@@ -91,9 +116,15 @@ def edit_prompt(ctx, names, scene, first_is_scene=False):
 
 
 def generate(ctx, sh, prompt, key, i, w, h):
-    """One candidate: plain Z-Image, or Qwen Edit with the cast pictures
-    (people beyond 3 are added in a second pass)."""
+    """One candidate: plain Z-Image, or Qwen Edit with the cast pictures.
+
+    Qwen takes three references per pass. With `multipass: true` any
+    further subjects are added by extra passes - each pass re-diffuses
+    the whole frame, so crowded shots drift. With multipass off (the
+    default) only the first three are referenced and the rest stay as
+    text, which is less accurate per subject but far more stable."""
     p, cfg = ctx.project, ctx.cfg
+    ccfg = cfg.get("cast") or {}
     out = p.dir / "candidates" / key
     seed = random.randint(1, 2**31)
     if not use_edit(ctx, sh):
@@ -104,7 +135,12 @@ def generate(ctx, sh, prompt, key, i, w, h):
         return [f for f in files if f.suffix.lower() in IMG_EXT]
     cast = p.state["cast"]
     names = cast_for(ctx, sh)
-    first, rest = names[:3], names[3:]
+    cap = max(1, min(3, int(ccfg.get("max_refs_per_keyframe", 3))))
+    first, rest = names[:cap], names[cap:]
+    if not ccfg.get("multipass", False):
+        rest = []                 # the others stay described in the text
+    # the reference pictures already carry the look of `first`
+    prompt = strip_locked(ctx, prompt, first)
     refs = [ctx.comfy.upload(cast[n]) for n in first]
     vals = {"@PROMPT": edit_prompt(ctx, first, prompt), "@SEED": seed,
             "@WIDTH": w, "@HEIGHT": h,
@@ -115,11 +151,12 @@ def generate(ctx, sh, prompt, key, i, w, h):
     files = [f for f in ctx.comfy.run(cfg["comfy"]["workflows"]["edit"], vals,
                                       out, label=f"{key} #{i + 1} (cast)")
              if f.suffix.lower() in IMG_EXT]
-    while rest and files:                  # 4+ people: add two at a time
+    while rest and files:                  # 4+ subjects: add two at a time
         add, rest = rest[:2], rest[2:]
         base = ctx.comfy.upload(files[0])
         more = [ctx.comfy.upload(cast[n]) for n in add]
-        vals.update({"@PROMPT": edit_prompt(ctx, add, prompt,
+        vals.update({"@PROMPT": edit_prompt(ctx, add,
+                                            strip_locked(ctx, prompt, add),
                                             first_is_scene=True),
                      "@SEED": random.randint(1, 2**31), "@IMAGE": base,
                      "@IMAGE2": more[0],
