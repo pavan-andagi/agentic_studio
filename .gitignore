@@ -2,3 +2,6 @@ projects/
 *.env
 studio.env
 __pycache__/
+projects/
+__pycache__/
+*.pyc
