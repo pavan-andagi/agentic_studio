@@ -94,10 +94,25 @@ def use_edit(ctx, sh):
     return bool(wf and Path(wf).exists() and cast_for(ctx, sh))
 
 
+TURN_NOTE = ("Some reference pictures are turnaround sheets showing the "
+             "SAME single character twice, front view on the left and back "
+             "view on the right: that is one person, not two. Draw each "
+             "character exactly once in the new picture, and use the back "
+             "view only to get the back of the hair, clothing and shoes "
+             "right when that character is seen from behind. Never copy "
+             "the side-by-side layout.")
+
+
+def _turn(ctx, names):
+    v = ctx.project.state.get("cast_views") or {}
+    return any(v.get(n) == "turnaround" for n in names)
+
+
 def _keeps(ctx, names):
     kinds = {kind_of(ctx, n) for n in names}
-    return " ".join(KEEP[k] for k in ("location", "prop", "character")
-                    if k in kinds)
+    out = " ".join(KEEP[k] for k in ("location", "prop", "character")
+                   if k in kinds)
+    return (out + " " + TURN_NOTE) if _turn(ctx, names) else out
 
 
 def edit_prompt(ctx, names, scene, first_is_scene=False):

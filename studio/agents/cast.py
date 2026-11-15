@@ -24,26 +24,38 @@ KINDS = (("locations", "location"),
 # instruction comes last, where the model weighs it most.
 REF = {
     "character": (
-        "Character reference picture of {name}: {desc}. {style}. Full body "
-        "from head to feet, standing upright, facing the camera, relaxed "
-        "neutral pose, arms slightly away from the body, face clearly "
-        "visible. IMPORTANT: plain flat light grey studio backdrop, no "
-        "scenery, no location, no background objects of any kind. Soft even "
-        "front lighting, sharp detail. Only this one character, no text, "
-        "no props."),
+        "Studio photograph on a seamless plain light grey backdrop, nothing "
+        "else in the frame. The subject is {name}: {desc}. {style}. Full "
+        "body from head to feet, standing upright, facing the camera, "
+        "relaxed neutral pose, arms slightly away from the body, face "
+        "clearly visible. No scenery, no location, no props, no text. Soft "
+        "even front lighting, sharp detail. Only this one character."),
     "prop": (
-        "Object reference photograph of {name}: {desc}. {style}. The whole "
-        "object in frame, centred, three-quarter view, every surface, "
-        "material, colour and marking clearly visible. IMPORTANT: plain "
-        "flat light grey studio backdrop, no scenery, no location, no "
-        "people, nothing else in the picture. Soft even lighting, sharp "
-        "detail, no text."),
+        "Studio product photograph on a seamless plain light grey backdrop, "
+        "nothing else in the frame. The subject is {name}: {desc}. {style}. "
+        "The whole object centred, three-quarter view, every surface, "
+        "material, colour and marking clearly visible. No hands, no people, "
+        "no scenery, no text. Soft even lighting, sharp detail."),
     "location": (
         "Establishing photograph of {name}: {desc}. {style}. Wide view of "
         "the empty place showing its layout, architecture, materials, "
-        "colours and light. IMPORTANT: no people, no animals, no text. "
-        "This is the set itself, to be reused in every shot there."),
+        "colours and light. No people, no animals, no text. This is the "
+        "set itself, to be reused in every shot there."),
 }
+
+# cast.turnaround: true -> character references are a front+back sheet, so
+# shots from behind have something to copy instead of being invented.
+TURNAROUND = (
+    "Character turnaround sheet on a seamless plain light grey backdrop, "
+    "nothing else in the frame. The SAME single character drawn twice, side "
+    "by side, at the same scale and the same height: on the LEFT the front "
+    "view facing the camera, on the RIGHT the back view facing directly "
+    "away, showing the back of the hair, clothing and shoes. The subject is "
+    "{name}: {desc}. {style}. Full body from head to feet in both views, "
+    "standing upright, arms slightly away from the body, identical "
+    "clothing, colours and proportions in both views. No scenery, no props, "
+    "no text, no labels, no panel borders, no shadows between the views. "
+    "Soft even lighting, sharp detail.")
 
 REVISE = """You rewrite one subject's locked visual description using the
 human's feedback. Keep everything the feedback does not mention. One
@@ -96,6 +108,7 @@ def run(ctx, feedback=None, items=None):
     subs = subjects(plan)
     cast = p.state.setdefault("cast", {})            # name -> reference file
     kinds = p.state.setdefault("cast_kinds", {})     # name -> kind
+    views = p.state.setdefault("cast_views", {})     # name -> single|turnaround
     used = p.state.setdefault("cast_descriptions", {})
     if not subs:
         return StageResult("No characters, locations or props in the plan: "
@@ -111,11 +124,15 @@ def run(ctx, feedback=None, items=None):
               f"generated and approved, but the Images stage will IGNORE "
               f"them and fall back to plain text-to-image.\n")
 
-    only = cfg.get("cast", {}).get("kinds")          # e.g. ["character"]
+    ccfg = cfg.get("cast") or {}
+    only = ccfg.get("kinds")                         # e.g. ["character"]
     if only:
         subs = [(k, c) for k, c in subs if k in only]
     w, h = cfg["defaults"]["image_size"]
-    n = cfg.get("cast", {}).get("options", 3)
+    turn = ccfg.get("turnaround", False)
+    # a front+back sheet needs a landscape frame to hold two full bodies
+    tw, th = max(w, h), min(w, h)
+    n = ccfg.get("options", 3)
     style = plan.get("style_line", "")
     out = p.dir / "cast"
     out.mkdir(exist_ok=True)
@@ -131,16 +148,21 @@ def run(ctx, feedback=None, items=None):
         if cast.get(name) and Path(cast[name]).exists():
             continue
         while True:
-            print(f"\n[Cast agent] {name} ({kind}): generating {n} options ...")
+            sheet_view = turn and kind == "character"
+            print(f"\n[Cast agent] {name} ({kind})"
+                  f"{' turnaround' if sheet_view else ''}: "
+                  f"generating {n} options ...")
             p.set_status("cast", "working",
                          f"generating {n} options for {name}")
-            prompt = REF[kind].format(name=name, desc=c["locked_description"],
-                                      style=style)
+            tmpl = TURNAROUND if sheet_view else REF[kind]
+            prompt = tmpl.format(name=name, desc=c["locked_description"],
+                                 style=style)
+            gw, gh = (tw, th) if sheet_view else (w, h)
             cands = []
             for i in range(n):
                 files = ctx.comfy.run(cfg["comfy"]["workflows"]["image"], {
                     "@PROMPT": prompt, "@SEED": random.randint(1, 2**31),
-                    "@WIDTH": w, "@HEIGHT": h,
+                    "@WIDTH": gw, "@HEIGHT": gh,
                     "@FILENAME": f"studio/{p.dir.name}_cast_{slug(name)}"},
                     p.dir / "candidates" / f"cast_{slug(name)}",
                     label=f"{name} #{i + 1}")
@@ -153,7 +175,11 @@ def run(ctx, feedback=None, items=None):
                 f"Cast: {name} ({what})",
                 f"{name}: {c['locked_description']}\n"
                 f"Options: {sheet}\nThis picture becomes {name}'s reference "
-                f"for EVERY shot: pick the one you want to see all video long.",
+                f"for EVERY shot: pick the one you want to see all video long."
+                + ("\nTurnaround: check it is ONE person shown twice - same "
+                   "face, same clothes, front on the left and back on the "
+                   "right. Two different people means retake (t)."
+                   if sheet_view else ""),
                 sheet,
                 f"Type 1-{len(cands)} to pick, t for new options, r to change "
                 f"the description, or a path to your own picture of {name}.")
@@ -177,6 +203,7 @@ def run(ctx, feedback=None, items=None):
             dest = out / f"{slug(name)}{src.suffix.lower()}"
             shutil.copy(src, dest)
             cast[name] = str(dest)
+            views[name] = "turnaround" if sheet_view else "single"
             used[name] = c["locked_description"]
             p.event("cast", "human_pick", f"{name}: reference chosen")
             _drop_keyframes_with(p, name)            # old keyframes, old look
@@ -194,8 +221,8 @@ def run(ctx, feedback=None, items=None):
                         for k, v in by_kind.items())
     return StageResult(f"References (used for every keyframe):\n{summary}\n\n"
                        f"All together: {sheet}", sheet,
-                       {"cast": dict(cast), "cast_kinds": dict(kinds)},
-                       [sheet])
+                       {"cast": dict(cast), "cast_kinds": dict(kinds),
+                        "cast_views": dict(views)}, [sheet])
 
 
 def _revise(ctx, plan, c, feedback):
