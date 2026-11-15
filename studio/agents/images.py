@@ -24,12 +24,44 @@ def needed(script):
 IMG_EXT = (".png", ".jpg", ".jpeg", ".webp")
 ORD = ["image 1", "image 2", "image 3"]
 
+# How each kind of reference is described to Qwen, and what must be kept.
+AS = {"character": "{n} is the person in {o}",
+      "prop": "the object in {o} is {n}, the exact one to use",
+      "location": "{o} is the place: {n}"}
+KEEP = {"character": ("Keep every person's face, hairstyle, body and outfit "
+                      "exactly as in their reference image."),
+        "prop": ("Keep every object exactly as in its reference image: the "
+                 "same shape, size, material, colour, hardware, wear and "
+                 "markings. Do not redesign it."),
+        "location": ("Keep the place's architecture, layout, materials, "
+                     "colours and vegetation exactly as in its reference "
+                     "image; only the camera angle may change.")}
+
+
+def kind_of(ctx, name):
+    return (ctx.project.state.get("cast_kinds") or {}).get(name, "character")
+
 
 def cast_for(ctx, sh):
-    """Characters in this shot that have an approved reference picture."""
+    """Subjects in this shot that have an approved reference picture.
+
+    Ordered location, then props, then characters: Qwen takes only three
+    references per pass, and the set pieces are what drift most visibly,
+    so they get the guaranteed slots. People beyond that are added by a
+    second pass in generate()."""
     cast = ctx.project.state.get("cast") or {}
-    return [c for c in (sh.get("characters") or [])
-            if cast.get(c) and Path(cast[c]).exists()]
+    here = []
+    if sh.get("location"):
+        here.append(sh["location"])
+    here += list(sh.get("props") or [])
+    here += list(sh.get("characters") or [])
+    seen, out = set(), []
+    for c in here:
+        if c in seen or not (cast.get(c) and Path(cast[c]).exists()):
+            continue
+        seen.add(c)
+        out.append(c)
+    return out
 
 
 def use_edit(ctx, sh):
@@ -37,20 +69,25 @@ def use_edit(ctx, sh):
     return bool(wf and Path(wf).exists() and cast_for(ctx, sh))
 
 
-def edit_prompt(names, scene, first_is_scene=False):
-    if first_is_scene:          # later pass: add people to an existing image
-        who = "; ".join(f"{n} is the person in {ORD[i + 1]}"
+def _keeps(ctx, names):
+    kinds = {kind_of(ctx, n) for n in names}
+    return " ".join(KEEP[k] for k in ("location", "prop", "character")
+                    if k in kinds)
+
+
+def edit_prompt(ctx, names, scene, first_is_scene=False):
+    if first_is_scene:        # later pass: add subjects to an existing image
+        who = "; ".join(AS[kind_of(ctx, n)].format(n=n, o=ORD[i + 1])
                         for i, n in enumerate(names))
         return (f"Keep image 1 exactly as it is: same scene, people, "
-                f"composition, camera and lighting. Add {', '.join(names)} "
-                f"into it ({who}), placed as described: {scene} Keep each "
-                f"added person's face, hairstyle, body and outfit exactly as "
-                f"in their reference image. Do not copy the reference "
-                f"background.")
-    who = "; ".join(f"{n} is the person in {ORD[i]}" for i, n in enumerate(names))
-    return (f"{who}. Create a new picture: {scene} Keep every person's face, "
-            f"hairstyle, body and outfit exactly as in their reference image. "
-            f"Do not copy the plain reference background.")
+                f"objects, composition, camera and lighting. Add "
+                f"{', '.join(names)} into it ({who}), placed as described: "
+                f"{scene} {_keeps(ctx, names)} Do not copy the plain grey "
+                f"reference backgrounds.")
+    who = "; ".join(AS[kind_of(ctx, n)].format(n=n, o=ORD[i])
+                    for i, n in enumerate(names))
+    return (f"{who}. Create a new picture: {scene} {_keeps(ctx, names)} "
+            f"Do not copy the plain grey reference backgrounds.")
 
 
 def generate(ctx, sh, prompt, key, i, w, h):
@@ -69,7 +106,7 @@ def generate(ctx, sh, prompt, key, i, w, h):
     names = cast_for(ctx, sh)
     first, rest = names[:3], names[3:]
     refs = [ctx.comfy.upload(cast[n]) for n in first]
-    vals = {"@PROMPT": edit_prompt(first, prompt), "@SEED": seed,
+    vals = {"@PROMPT": edit_prompt(ctx, first, prompt), "@SEED": seed,
             "@WIDTH": w, "@HEIGHT": h,
             "@FILENAME": f"studio/{p.dir.name}_{key}",
             "@IMAGE": refs[0],
@@ -82,7 +119,8 @@ def generate(ctx, sh, prompt, key, i, w, h):
         add, rest = rest[:2], rest[2:]
         base = ctx.comfy.upload(files[0])
         more = [ctx.comfy.upload(cast[n]) for n in add]
-        vals.update({"@PROMPT": edit_prompt(add, prompt, first_is_scene=True),
+        vals.update({"@PROMPT": edit_prompt(ctx, add, prompt,
+                                            first_is_scene=True),
                      "@SEED": random.randint(1, 2**31), "@IMAGE": base,
                      "@IMAGE2": more[0],
                      "@IMAGE3": more[1] if len(more) > 1 else None})
@@ -131,7 +169,8 @@ def run(ctx, feedback=None, items=None):
             cands = []
             who = cast_for(ctx, sh) if use_edit(ctx, sh) else []
             if who:
-                print(f"  with cast references: {', '.join(who)}")
+                print("  with references: " + ", ".join(
+                    f"{n} ({kind_of(ctx, n)})" for n in who))
             for i in range(n):
                 cands += generate(ctx, sh, sh[field], key, i, w, h)
             sheet = image_grid(cands, p.dir / "sheets" / f"{key}.png")
