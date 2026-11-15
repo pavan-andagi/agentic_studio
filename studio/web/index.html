@@ -92,7 +92,7 @@ var ST=[
  {id:'trend',n:'1 Trend identifier',s:'Claude + web search',desc:'Finds what is trending now and ranks ideas for your channel.'},
  {id:'plan',n:'2 Project planner',s:'Style, characters, beats',desc:'Writes the production plan and locks the look and characters.'},
  {id:'script',n:'3 Script and shots',s:'Prompts for every shot',desc:'Turns the beats into a shot list with ready-to-run prompts.'},
- {id:'cast',n:'4 Cast',s:'One picture per character',desc:'Makes a reference picture of every character; you pick the face and outfit used all video long.'},
+ {id:'cast',n:'4 Cast',s:'One picture per character, place and prop',desc:'Makes a reference picture of every character, location and prop; you pick the one used all video long.'},
  {id:'images',n:'5 Image creation',s:'Z-Image / Qwen Edit',desc:'Generates keyframes (with the cast pictures for shots with characters); you pick the best option for each.'},
  {id:'clips',n:'6 Clips and editing',s:'LTX-2.5, 4K, assembly',desc:'Animates the keyframes, checks the clips, joins the final video.'},
  {id:'audio',n:'7 Audio',s:'Voice, music, ambience',desc:'Narration (Kokoro), music (ACE-Step) and ambience (LTX audio), mixed under the video.'},
@@ -110,7 +110,7 @@ function stageInfo(d,id){var f=d.files,sc=f.script;
  if(id==='script')return sc&&sc.shots?sc.shots.length+' shots, about '+sc.shots.reduce(function(a,s){return a+(s.duration||0)},0)+' s':'Prompts for every shot';
  if(id==='images'){var n=needed(d);return n.length?Object.keys(d.keyframes).length+' of '+n.length+' keyframes picked':'Z-Image Turbo'}
  if(id==='clips')return sc&&sc.shots?Object.keys(d.clips).length+' of '+sc.shots.length+' clips approved':'LTX-2.5, 4K, assembly';
- if(id==='cast'){var cn=Object.keys(d.cast||{}),pc=(f.plan&&f.plan.characters)||[];return pc.length?cn.length+' of '+pc.length+' characters cast':'One picture per character'}
+ if(id==='cast'){var cn=Object.keys(d.cast||{}),p=f.plan||{},pc=((p.characters||[]).length)+((p.locations||[]).length)+((p.props||[]).length);return pc?cn.length+' of '+pc+' references made':'One picture per character, place and prop'}
  if(id==='audio'){var a=f.audio;return a?(a.layers.length?a.layers.join(', '):'no layers')+' mixed':'Voice, music, ambience'}
  return d.final.length?'Ready to watch':'Edit notes, captions'}
 function lastRewind(d){var r=d.events.filter(function(e){return e.kind==='rewind'}).pop();
@@ -174,7 +174,8 @@ function outPlan(d){var p=d.files.plan;if(!p)return empty('The plan has not been
  '<h3>Platforms</h3><table><tr><th>Platform</th><th>Aspect</th><th>Size</th><th>fps</th><th>Length</th></tr>'+(p.platforms||[]).map(function(x){return'<tr><td>'+esc(x.name)+'</td><td>'+esc(x.aspect)+'</td><td>'+esc((x.resolution||[]).join('x'))+'</td><td>'+esc(x.fps)+'</td><td>'+esc(x.target_seconds)+' s</td></tr>'}).join('')+'</table>'+
  '<h3>Style line (starts every image prompt)</h3><pre>'+esc(p.style_line)+'</pre>'+
  '<h3>Locked characters</h3>'+(p.characters||[]).map(function(c){return'<div class="item"><b>'+esc(c.name)+'</b><p class="m">'+esc(c.locked_description)+'</p></div>'}).join('')+
- ((p.locations||[]).length?'<h3>Locations</h3>'+p.locations.map(function(c){return'<div class="item"><b>'+esc(c.name)+'</b><p class="m">'+esc(c.locked_description)+'</p></div>'}).join(''):'')+
+ ((p.locations||[]).length?'<h3>Locked locations</h3>'+p.locations.map(function(c){return'<div class="item"><b>'+esc(c.name)+'</b><p class="m">'+esc(c.locked_description)+'</p></div>'}).join(''):'')+
+ ((p.props||[]).length?'<h3>Locked props</h3>'+p.props.map(function(c){return'<div class="item"><b>'+esc(c.name)+'</b><p class="m">'+esc(c.locked_description)+'</p></div>'}).join(''):'')+
  '<h3>Story beats</h3><ol>'+(p.story_beats||[]).map(function(b){return'<li>'+esc(b)+'</li>'}).join('')+'</ol>'+
  '<h3>Production</h3><p class="m">'+esc(p.shot_count)+' shots x '+esc(p.clip_seconds)+' s. Audio: '+esc(p.audio_plan)+'. GPU: '+esc(p.gpu_estimate)+'.</p>'+((p.risks||[]).length?'<p class="m"><b>Risks:</b> '+esc(p.risks.join('; '))+'</p>':'')}
 function outScript(d){var s=d.files.script;if(!s)return empty('The script has not been written yet.');
@@ -200,9 +201,17 @@ function outAudio(d){var a=d.files.audio,sc=d.files.script,h='';
  if(sc&&sc.shots){var rows=sc.shots.filter(function(x){return x.narration});if(rows.length)h+='<h3>Narration</h3><table>'+rows.map(function(x){return'<tr><td><b>'+esc(x.id)+'</b></td><td>'+esc(x.narration)+'</td></tr>'}).join('')+'</table>'}
  if(pv.length)h+='<h3>Previews</h3>'+pv.map(function(r){return'<div class="item"><b>'+esc(r.split('/').pop())+'</b><video class="pv" controls preload="metadata" src="'+fileUrl(d.name,r)+'"></video></div>'}).join('');
  return h}
-function outCast(d){var pc=(d.files.plan&&d.files.plan.characters)||[],c=d.cast||{};
- if(!pc.length)return empty('The plan has no characters, so there is nothing to cast.');
- return pc.map(function(x){var r=c[x.name];return'<div class="item"><b>'+esc(x.name)+'</b>'+(r?'<img class="pv" style="max-height:320px" src="'+fileUrl(d.name,r)+'">':'<div class="m">not cast yet</div>')+'<div class="m">'+esc(x.locked_description)+'</div></div>'}).join('')}
+var CASTKINDS=[['locations','Locations'],['props','Props'],['characters','Characters']];
+function castSubjects(d){var p=d.files.plan||{},out=[];
+ CASTKINDS.forEach(function(k){(p[k[0]]||[]).forEach(function(x){out.push({kind:k[1],e:x})})});
+ return out}
+function outCast(d){var subs=castSubjects(d),c=d.cast||{};
+ if(!subs.length)return empty('The plan has no characters, locations or props, so there is nothing to cast.');
+ var html='',last='';
+ subs.forEach(function(s){var x=s.e,r=c[x.name];
+  if(s.kind!==last){html+='<h3>'+s.kind+'</h3>';last=s.kind}
+  html+='<div class="item"><b>'+esc(x.name)+'</b>'+(r?'<img class="pv" style="max-height:320px" src="'+fileUrl(d.name,r)+'">':'<div class="m">not cast yet</div>')+'<div class="m">'+esc(x.locked_description)+'</div></div>'});
+ return html}
 function renderOutput(d,id){return({trend:outTrend,plan:outPlan,script:outScript,cast:outCast,images:outImages,clips:outClips,audio:outAudio,final:outFinal}[id]||outTrend)(d)}
 function renderMaster(d,id){var m=d.masters[id];if(id==='final')m=d.masters.audio;
  if(!m)return empty('No Master decision for this stage yet. The Master agent only acts when you give feedback at a review.');
