@@ -196,8 +196,12 @@ def rewrite(ctx, prompt, feedback):
                             )["prompt"]
 
 
-def _candidates(ctx, sh, key, field, n, w, h):
-    """Generate n options for one keyframe and return the files."""
+def _candidates(ctx, sh, key, field, n, w, h, pool=None):
+    """Generate n options for one keyframe and return the files.
+
+    `pool` is the saved option list: pass it and each render is published
+    the moment it lands, so the dashboard board fills up while the GPU
+    works instead of appearing all at once at the gate."""
     p = ctx.project
     print(f"\n[Image agent] {key}: generating {n} options ...")
     p.set_status("images", "working", f"generating {n} options for {key}")
@@ -208,6 +212,9 @@ def _candidates(ctx, sh, key, field, n, w, h):
     cands = []
     for i in range(n):
         cands += generate(ctx, sh, sh[field], key, i, w, h)
+        if pool is not None:              # show it now, pick it later
+            pool[key] = [str(f) for f in cands]
+            p.save()
     return cands
 
 
@@ -249,9 +256,7 @@ def run(ctx, feedback=None, items=None):
             print(f"\n[Image agent] rendering options for {len(missing)} "
                   f"keyframes before asking anything ...")
             for sh, which, key, field in missing:
-                pool[key] = [str(f) for f in
-                             _candidates(ctx, sh, key, field, n, w, h)]
-                p.save()                      # survive a crash mid-batch
+                _candidates(ctx, sh, key, field, n, w, h, pool)
             print("\n[Image agent] all options ready - now pick them.")
 
     # ---- phase 2: pick ---------------------------------------------------
@@ -259,8 +264,7 @@ def run(ctx, feedback=None, items=None):
         while True:
             cands = [Path(x) for x in pool.get(key, []) if Path(x).exists()]
             if not cands:
-                cands = _candidates(ctx, sh, key, field, n, w, h)
-                pool[key] = [str(f) for f in cands]
+                cands = _candidates(ctx, sh, key, field, n, w, h, pool)
                 p.save()
             who = cast_for(ctx, sh) if use_edit(ctx, sh) else []
             sheet = image_grid(cands, p.dir / "sheets" / f"{key}.png")

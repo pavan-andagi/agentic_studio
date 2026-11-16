@@ -102,8 +102,12 @@ def _replace_description(p, old, new):
     p.write_json("3_script.json", script)
 
 
-def _candidates(ctx, kind, c, style, n, w, h, turn):
-    """Generate n options for one subject and return the files."""
+def _candidates(ctx, kind, c, style, n, w, h, turn, pool=None):
+    """Generate n options for one subject and return the files.
+
+    `pool` is the saved option list: pass it and each picture is published
+    to it the moment it lands, so the dashboard board fills up while the
+    GPU works instead of appearing all at once at the gate."""
     p, cfg = ctx.project, ctx.cfg
     name = c["name"]
     sheet_view = turn and kind == "character"
@@ -122,6 +126,9 @@ def _candidates(ctx, kind, c, style, n, w, h, turn):
             p.dir / "candidates" / f"cast_{slug(name)}",
             label=f"{name} #{i + 1}")
         out += [f for f in files if f.suffix.lower() in IMG_EXT]
+        if pool is not None:              # show it now, pick it later
+            pool[name] = [str(f) for f in out]
+            p.save()
     return out
 
 
@@ -183,9 +190,7 @@ def run(ctx, feedback=None, items=None):
             print(f"\n[Cast agent] generating options for "
                   f"{len(missing)} subjects before asking anything ...")
             for kind, c in missing:
-                pool[c["name"]] = [str(f) for f in _candidates(
-                    ctx, kind, c, style, n, w, h, turn)]
-                p.save()                             # survive a crash
+                _candidates(ctx, kind, c, style, n, w, h, turn, pool)
             print(f"\n[Cast agent] all options ready - now pick them.")
 
     # ---- phase 2: pick ---------------------------------------------------
@@ -195,8 +200,7 @@ def run(ctx, feedback=None, items=None):
             sheet_view = turn and kind == "character"
             cands = [Path(x) for x in pool.get(name, []) if Path(x).exists()]
             if not cands:
-                cands = _candidates(ctx, kind, c, style, n, w, h, turn)
-                pool[name] = [str(f) for f in cands]
+                cands = _candidates(ctx, kind, c, style, n, w, h, turn, pool)
                 p.save()
             sheet = image_grid(cands, p.dir / "sheets" / f"cast_{slug(name)}.png")
             open_file(sheet)
