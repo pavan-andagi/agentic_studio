@@ -84,30 +84,15 @@ svg{width:100%;height:auto;display:block}
 .bubf{transform-box:fill-box;transform-origin:50% 50%;
  animation:drift1 9s ease-in-out infinite}
 .bubf.d2{animation-name:drift2}.bubf.d3{animation-name:drift3}
-.film{fill:url(#gFilm);pointer-events:none}
-.crescent{fill:none;stroke:#eef4ff;opacity:.62;stroke-linecap:round;
- filter:url(#fSoft)}
-.crescent2{fill:none;stroke:#ffffff;opacity:.9;stroke-linecap:round}
-.irid{fill:none;stroke:url(#gBub);opacity:.5;stroke-linecap:round;
- filter:url(#fSoft)}
-.irid2{fill:none;stroke:url(#gBub2);opacity:.42;stroke-linecap:round;
- filter:url(#fSoft)}
-.rimo{fill:none;stroke:url(#gBub);stroke-width:1.3;opacity:.45}
-.rimlit{fill:none;stroke:#ffffff;stroke-width:1.1;opacity:.75;
- stroke-linecap:round}
-.spec{fill:#ffffff;opacity:.5;filter:url(#fSoft)}
-.spec3{fill:#ffffff;opacity:.92}
-.spec2{fill:#ffffff;opacity:.4}
-/* Enough of the picture to recognise which option it is, still clearly
-   behind the film rather than painted on it. */
-.inner{opacity:.58;filter:saturate(1.15) brightness(1.08)}
-.bubw:hover .inner{opacity:.8}
-.bubw:hover .crescent{opacity:.78}
-.bubw.on .inner{opacity:.95}
-.bubw.on .crescent{opacity:.85}
-.bubw.on .irid,.bubw.on .irid2{opacity:.8}
-.bubw.on .rimo{opacity:.85}
-.bubw.on{filter:drop-shadow(0 0 14px rgba(180,215,255,.4))}
+/* Floating picture cards: the image is the point, so it is shown plainly
+   and nothing is drawn over it. */
+.cardbg{fill:#0e0e0d}
+.cardln{fill:none;stroke:#514f4a;stroke-width:1.2}
+.inner{opacity:1}
+.bubw{filter:drop-shadow(0 5px 10px rgba(0,0,0,.55))}
+.bubw:hover .cardln{stroke:#9a978e}
+.bubw.on .cardln{stroke:#ffffff;stroke-width:2}
+.bubw.on{filter:drop-shadow(0 0 14px rgba(190,215,255,.45))}
 .bubn{font:600 11px system-ui,sans-serif;fill:#1b1a18}
 .bubl{font:600 11.5px system-ui,sans-serif;fill:#b4b1a8}
 .bubw.on .bubl{fill:var(--tx)}
@@ -480,43 +465,29 @@ function rowPos(i,n,cx,y,spread){
  return {x:cx-spread/2+t*spread+jit(i+9,10),
          y:y-Math.sin(t*Math.PI)*20+jit(i+4,12)}}
 
-/* An arc of radius R from a0 to a1 degrees, 0 = right, clockwise. */
-function arc(R,a0,a1){
- var p=function(a){a=a*Math.PI/180;
-   return (R*Math.cos(a)).toFixed(2)+' '+(R*Math.sin(a)).toFixed(2)};
- return 'M'+p(a0)+'A'+R.toFixed(2)+' '+R.toFixed(2)+' 0 '
-   +(Math.abs(a1-a0)>180?1:0)+' 1 '+p(a1)}
-
+/* A floating picture card. `r` is half its width; it is a little taller
+   than wide, because most candidates are portrait frames. */
 function oneBub(d,id,file,r,label,badge,cls){
- var sl=String(id).replace(/[^a-z0-9]+/gi,''),o='';
+ var sl=String(id).replace(/[^a-z0-9]+/gi,''),o='',
+     w=2*r,h=Math.round(2*r*1.26),x=-r,y=-h/2;
  var k=0;for(var c=0;c<sl.length;c++)k=(k*31+sl.charCodeAt(c))%997;
  o+='<g class="bubw'+(cls||'')+'" data-bub="'+id+'">'
-  +'<g class="bubf'+[' ',' d2',' d3'][k%3].trim().replace(/^/,k%3?' ':'')
+  +'<g class="bubf'+(k%3?(k%3===1?' d2':' d3'):'')
   +'" style="animation-delay:-'+((k%90)*0.13).toFixed(2)
-  +'s;animation-duration:'+(8.5+(k%11)*0.55).toFixed(2)+'s">';
- // the picture hangs inside the bubble rather than being painted on it:
- // faded, and softened into the film instead of cut off at the rim
- if(file)o+='<image class="inner" href="'+fileUrl(d.name,file)+'" x="'+(-r+2)
-  +'" y="'+(-r+2)+'" width="'+(2*r-4)+'" height="'+(2*r-4)
-  +'" preserveAspectRatio="xMidYMid slice" mask="url(#mFade)"/>';
- // A soap bubble's light is not an even ring: a thick bright crescent
- // pools along the lower-left where the film catches the key light, the
- // colour bands gather opposite it, and the middle stays clear.
- o+='<circle class="film" cx="0" cy="0" r="'+r+'"/>'
-  +'<path class="crescent" d="'+arc(r*0.80,104,196)+'" stroke-width="'+(r*0.17)+'"/>'
-  +'<path class="crescent2" d="'+arc(r*0.865,112,188)+'" stroke-width="'+(r*0.055)+'"/>'
-  +'<path class="irid" d="'+arc(r*0.84,-74,26)+'" stroke-width="'+(r*0.15)+'"/>'
-  +'<path class="irid2" d="'+arc(r*0.80,206,268)+'" stroke-width="'+(r*0.11)+'"/>'
-  +'<circle class="rimo" cx="0" cy="0" r="'+(r-0.5)+'"/>'
-  +'<path class="rimlit" d="'+arc(r-0.5,96,206)+'"/>'
-  +'<ellipse class="spec" cx="'+(-r*0.34)+'" cy="'+(-r*0.46)+'" rx="'+(r*0.30)
-  +'" ry="'+(r*0.15)+'" transform="rotate(-34)"/>'
-  +'<ellipse class="spec3" cx="'+(-r*0.30)+'" cy="'+(-r*0.50)+'" rx="'+(r*0.13)
-  +'" ry="'+(r*0.06)+'" transform="rotate(-34)"/>'
-  +'<circle class="spec2" cx="'+(r*0.40)+'" cy="'+(r*0.46)+'" r="'+(r*0.07)+'"/>';
- if(badge)o+='<rect class="bubnb" x="-10" y="'+(r-7)+'" width="20" height="14" rx="7"/>'
-  +'<text class="bubn" x="0" y="'+(r+3)+'" text-anchor="middle">'+esc(badge)+'</text>';
- if(label)o+='<text class="bubl" x="0" y="'+(r+24)+'" text-anchor="middle">'
+  +'s;animation-duration:'+(8.5+(k%11)*0.55).toFixed(2)+'s">'
+  +'<clipPath id="cc'+sl+'"><rect x="'+x+'" y="'+y+'" width="'+w+'" height="'
+  +h+'" rx="9"/></clipPath>'
+  +'<rect class="cardbg" x="'+x+'" y="'+y+'" width="'+w+'" height="'+h
+  +'" rx="9"/>';
+ if(file)o+='<image class="inner" href="'+fileUrl(d.name,file)+'" x="'+x
+  +'" y="'+y+'" width="'+w+'" height="'+h
+  +'" preserveAspectRatio="xMidYMid slice" clip-path="url(#cc'+sl+')"/>';
+ o+='<rect class="cardln" x="'+x+'" y="'+y+'" width="'+w+'" height="'+h
+  +'" rx="9"/>';
+ if(badge)o+='<rect class="bubnb" x="'+(r-24)+'" y="'+(y+6)+'" width="19" height="15" rx="7"/>'
+  +'<text class="bubn" x="'+(r-14.5)+'" y="'+(y+17)+'" text-anchor="middle">'
+  +esc(badge)+'</text>';
+ if(label)o+='<text class="bubl" x="0" y="'+(y+h+17)+'" text-anchor="middle">'
   +esc(cut(label,16))+'</text>';
  return o+'</g></g>'}
 
@@ -564,34 +535,7 @@ function bubbleBoard(d,items,pend){
      +'answers right now.</span>')
    +'<a class="btn" href="'+fileUrl(d.name,fl)+'" target="_blank">Open full size</a>'
    +'<button data-bub="'+open.key+':'+bubPick.n+'">Close</button></div></div>'}
- return '<div class="tray"><svg viewBox="0 0 '+SW+' '+H+'" role="img"><defs>'
-  +'<linearGradient id="gBub" x1="0" y1="0" x2=".85" y2="1">'
-  +'<stop offset="0" stop-color="#8fd4ff"/><stop offset=".22" stop-color="#b9a6ff"/>'
-  +'<stop offset=".44" stop-color="#ffb8e6"/><stop offset=".62" stop-color="#ffe6a3"/>'
-  +'<stop offset=".8" stop-color="#a8f0d4"/><stop offset="1" stop-color="#9fd8ff"/>'
-  +'</linearGradient>'
-  +'<linearGradient id="gBub2" x1="0" y1="1" x2="1" y2="0">'
-  +'<stop offset="0" stop-color="#ffb8e6"/><stop offset=".45" stop-color="#c7b3ff"/>'
-  +'<stop offset="1" stop-color="#9ee6ff"/></linearGradient>'
-  // thin film: invisible in the middle, barely tinted where it thickens
-  +'<radialGradient id="gFilm">'
-  +'<stop offset="0" stop-color="#ffffff" stop-opacity="0"/>'
-  +'<stop offset=".62" stop-color="#cfe9ff" stop-opacity=".03"/>'
-  +'<stop offset=".86" stop-color="#bfe4ff" stop-opacity=".09"/>'
-  +'<stop offset=".97" stop-color="#e2d6ff" stop-opacity=".18"/>'
-  +'<stop offset="1" stop-color="#ffffff" stop-opacity=".06"/></radialGradient>'
-  +'<filter id="fSoft" x="-50%" y="-50%" width="200%" height="200%">'
-  +'<feGaussianBlur stdDeviation="1.6"/></filter>'
-  // one mask for every bubble: the picture dissolves into the film
-  // rather than being cut off at a hard circular edge
-  +'<radialGradient id="gFade">'
-  +'<stop offset="0" stop-color="#ffffff" stop-opacity="1"/>'
-  +'<stop offset=".62" stop-color="#ffffff" stop-opacity=".96"/>'
-  +'<stop offset=".86" stop-color="#ffffff" stop-opacity=".55"/>'
-  +'<stop offset="1" stop-color="#ffffff" stop-opacity="0"/></radialGradient>'
-  +'<mask id="mFade" maskContentUnits="objectBoundingBox">'
-  +'<circle cx=".5" cy=".5" r=".5" fill="url(#gFade)"/></mask>'
-  +'</defs>'
+ return '<div class="tray"><svg viewBox="0 0 '+SW+' '+H+'" role="img">'
   +str+'<circle class="knot" cx="60" cy="'+KY+'" r="4"/>'+bub+'</svg>'
   +'<div class="m">'+(open?'Options for '+esc(open.label)
     +' &mdash; click one to open it, or click '+esc(open.label)+' again to close'
@@ -714,12 +658,15 @@ function renderReview(d){var p=d.pending,h=headline(d);
   return'<div class="card"><div class="ct">'+esc(h.t)+'</div>'+extra+'</div>'}
  var o=p.options||'',m=o.match(/1-(\d+)/),n=m?+m[1]:0,retake=/\[t\]|\bt for\b|\bt = /.test(o),skip=/\bs = /.test(o),btn=[];
  if(p.kind!=='text'&&n===0)btn.push('<button class="ok" data-ans="a">Approve</button>');
- for(var i=1;i<=n;i++)btn.push('<button class="ok" data-ans="'+i+'">Pick #'+i+'</button>');
+ // numbered picking happens on the bubbles in the Output panel, where you
+ // can see each option full size before choosing it
  if(retake)btn.push('<button data-ans="t">New options / retake (t)</button>');
  if(skip)btn.push('<button data-ans="s">Skip this layer (s)</button>');
  if(/\bx = /.test(o))btn.push('<button data-ans="x">Redo this stage with my feedback (x)</button>');
  var label=p.kind==='text'?'Send':(p.kind==='gate'?'Send as feedback (rewrite)':'Send feedback');
  return'<div class="card amber"><div class="ct">Waiting for you: '+esc(p.title)+'</div><div class="sum">'+esc(p.summary)+'</div>'+previewHtml(d,p.artifact)+
+  (n?'<div class="hint">To choose, open a bubble in the Output panel and '
+    +'use Pick this one. '+n+' options are waiting.</div>':'')+
   '<div class="quick">'+btn.join('')+'</div><textarea id="ans" placeholder="Type your feedback here (or a file path for your own image or clip)"></textarea>'+
   '<div class="row2"><button class="go" data-send="feedback">'+label+'</button>'+(p.kind==='text'?'':'<button data-send="raw">Send exactly as typed</button>')+'</div>'+voiceBar()+'<div class="hint">'+esc(o)+'</div></div>'}
 function empty(t){return'<div class="empty">'+esc(t)+'</div>'}
@@ -918,7 +865,8 @@ function speak(text){if(!text)return;if(V.audio){V.audio.pause();V.audio=null}if
   .then(function(b){vstat('');var a=new Audio(URL.createObjectURL(b));V.audio=a;a.play().catch(function(){vstat('Click Listen to play (the browser blocked autoplay).')})}).catch(function(){vstat('');fallback()})}
 function autoRead(d){var a=document.getElementById('vAuto');if(!a||!a.checked||!d.pending)return;if(V.lastRead===d.pending.id)return;V.lastRead=d.pending.id;speak(pendingText(d.pending))}
 /* ---------------- page wiring ---------------- */
-var data=null,proj=null,sel=null,tab='output',el={};
+var data=null,proj=null,sel=null,tab='output',el={},
+    lastDefault=null,projManual=false;
 function curStage(){if(sel)return sel;var c=(data.state.current||{}).stage;if(c)return c;var ap=data.state.approved||{};for(var i=0;i<ST.length;i++)if(ST[i].id!=='final'&&!ap[ST[i].id])return ST[i].id;return'final'}
 function setHTML(e,h){if(e&&e._h!==h){e.innerHTML=h;e._h=h}}
 var view='flow',selMsg=null,bubPick=null,bubOpen=null,bubFor=null;
@@ -981,7 +929,19 @@ function init(){initVoice();['flow','review','head','tabs','body','chip','meta',
  el.fLane.innerHTML='<option value="all">everyone</option>'+LANES.map(function(l){return'<option value="'+l.id+'">'+esc(l.n)+'</option>'}).join('');
  el.fLlm.onchange=function(){comm.llm=el.fLlm.checked;commStick=true;render()};el.fComfy.onchange=function(){comm.comfy=el.fComfy.checked;commStick=true;render()};
  el.fLane.onchange=function(){comm.lane=el.fLane.value;commStick=true;render()};el.fAll.onchange=function(){comm.all=el.fAll.checked;commStick=true;render()};
- var pick=function(){fetch(q('/api/projects')).then(function(r){return r.json()}).then(function(r){el.proj.innerHTML=r.projects.map(function(n){return'<option>'+esc(n)+'</option>'}).join('');var want=new URLSearchParams(location.search).get('project')||proj||r.default;if(want)el.proj.value=want;proj=el.proj.value;load()})};
- el.proj.onchange=function(){proj=el.proj.value;sel=null;load()};pick();setInterval(load,2000);setInterval(pick,15000)}
+ // Follow the studio when it starts a different project, unless you have
+ // picked one yourself - otherwise the tab stays pinned to a finished run.
+ var pick=function(){fetch(q('/api/projects')).then(function(r){return r.json()}).then(function(r){
+  el.proj.innerHTML=r.projects.map(function(n){return'<option>'+esc(n)+'</option>'}).join('');
+  var urlWant=new URLSearchParams(location.search).get('project'),
+      moved=r.default&&r.default!==lastDefault;
+  lastDefault=r.default;
+  var want=urlWant||((moved&&!projManual)?r.default:(proj||r.default));
+  if(want)el.proj.value=want;
+  if(el.proj.value!==proj){proj=el.proj.value;sel=null;bubOpen=null;bubPick=null}
+  load()})};
+ el.proj.onchange=function(){projManual=true;proj=el.proj.value;sel=null;
+  bubOpen=null;bubPick=null;load()};
+ pick();setInterval(load,2000);setInterval(pick,5000)}
 if(typeof document!=='undefined'&&document.getElementById('flow'))init();
 </script></body></html>
