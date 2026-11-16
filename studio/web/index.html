@@ -64,11 +64,82 @@ svg{width:100%;height:auto;display:block}
 .review .antb,.review .ear{fill:var(--am)}.review .ant{stroke:var(--am)}
 .master .antb,.master .ear{fill:var(--mx)}.master .ant{stroke:var(--mx)}
 .asleep .crew{opacity:.5}
+/* the inspector: the only human here, so he gets a uniform */
+.face{fill:#E9D7C3;stroke:#C3A888;stroke-width:.7}
+.cap{fill:#2E62B8}.capb{fill:#24509B}.peak{fill:#1B3D79}
+.medal{fill:#E3B341;stroke:#B98A2A;stroke-width:.6}
+.tash{fill:#4A382A}
+.hEye{fill:#2A2320}
+.hlid{display:none;fill:none;stroke:#4A382A;stroke-width:1.5;stroke-linecap:round}
+.asleep .hlid{display:block}.asleep .hEye{display:none}
+.review .medal{animation:scan 1.6s ease-in-out infinite}
 /* the showrunner outranks the crew: bigger, hard-browed, lit in rust */
 .brow{fill:none;stroke:var(--mx);stroke-width:2.6;stroke-linecap:round}
 .master .ant{stroke-width:3.2}
 .master .crew{filter:drop-shadow(0 0 9px rgba(216,90,48,.55))}
 .master.asleep .crew{filter:none}
+/* candidates hang off the working agent like bubbles on strings */
+.str{fill:none;stroke:#d8d2c2;stroke-width:1;opacity:.38}
+.bubw{cursor:pointer}
+.bubf{transform-box:fill-box;transform-origin:50% 50%;
+ animation:drift1 9s ease-in-out infinite}
+.bubf.d2{animation-name:drift2}.bubf.d3{animation-name:drift3}
+.film{fill:url(#gFilm);pointer-events:none}
+.crescent{fill:none;stroke:#eef4ff;opacity:.62;stroke-linecap:round;
+ filter:url(#fSoft)}
+.crescent2{fill:none;stroke:#ffffff;opacity:.9;stroke-linecap:round}
+.irid{fill:none;stroke:url(#gBub);opacity:.5;stroke-linecap:round;
+ filter:url(#fSoft)}
+.irid2{fill:none;stroke:url(#gBub2);opacity:.42;stroke-linecap:round;
+ filter:url(#fSoft)}
+.rimo{fill:none;stroke:url(#gBub);stroke-width:1.3;opacity:.45}
+.rimlit{fill:none;stroke:#ffffff;stroke-width:1.1;opacity:.75;
+ stroke-linecap:round}
+.spec{fill:#ffffff;opacity:.5;filter:url(#fSoft)}
+.spec3{fill:#ffffff;opacity:.92}
+.spec2{fill:#ffffff;opacity:.4}
+/* Enough of the picture to recognise which option it is, still clearly
+   behind the film rather than painted on it. */
+.inner{opacity:.58;filter:saturate(1.15) brightness(1.08)}
+.bubw:hover .inner{opacity:.8}
+.bubw:hover .crescent{opacity:.78}
+.bubw.on .inner{opacity:.95}
+.bubw.on .crescent{opacity:.85}
+.bubw.on .irid,.bubw.on .irid2{opacity:.8}
+.bubw.on .rimo{opacity:.85}
+.bubw.on{filter:drop-shadow(0 0 14px rgba(180,215,255,.4))}
+.bubn{font:600 11px system-ui,sans-serif;fill:#1b1a18}
+.bubl{font:600 11.5px system-ui,sans-serif;fill:#b4b1a8}
+.bubw.on .bubl{fill:var(--tx)}
+.str.kid{opacity:.55}
+.bubnb{fill:#ffffff;opacity:.82}
+.knot{fill:#d8d2c2;opacity:.5}
+.tray{margin-top:8px}
+.tray svg{width:100%;height:auto;display:block}
+a.btn{display:inline-block;text-decoration:none;color:var(--tx);
+ background:var(--panel2);border:1px solid var(--line);border-radius:8px;
+ padding:6px 10px}
+a.btn:hover{border-color:var(--mut)}
+/* Three wandering paths, so a cluster never bobs in unison. Real bubbles
+   drift and wobble rather than pulsing on the spot. */
+@keyframes drift1{
+ 0%{transform:translate(0,0) scale(1,1)}
+ 22%{transform:translate(5px,-7px) scale(1.012,.988)}
+ 46%{transform:translate(-2px,-12px) scale(.99,1.01)}
+ 70%{transform:translate(-6px,-5px) scale(1.008,.992)}
+ 100%{transform:translate(0,0) scale(1,1)}}
+@keyframes drift2{
+ 0%{transform:translate(0,0) scale(1,1)}
+ 26%{transform:translate(-5px,-6px) scale(.99,1.012)}
+ 52%{transform:translate(3px,-11px) scale(1.014,.986)}
+ 76%{transform:translate(6px,-3px) scale(.994,1.006)}
+ 100%{transform:translate(0,0) scale(1,1)}}
+@keyframes drift3{
+ 0%{transform:translate(0,0) scale(1,1)}
+ 30%{transform:translate(4px,-10px) scale(1.01,.99)}
+ 55%{transform:translate(-4px,-6px) scale(.988,1.014)}
+ 80%{transform:translate(-2px,-12px) scale(1.006,.994)}
+ 100%{transform:translate(0,0) scale(1,1)}}
 /* every review reports up this spine to the showrunner */
 .spine{fill:none;stroke:var(--mx);stroke-width:2.2;opacity:.45;stroke-linecap:round}
 .jn{fill:var(--mx);opacity:.55}
@@ -343,23 +414,189 @@ function crew(kind,x,y,k){
 
 /* The inspector: a face in three-quarter view, thinking only while a
    question is actually open. */
+/* The inspector: peaked blue cap with a gold badge, and a moustache.
+   The one human on the board, so he does not look like the crew. */
 function inspector(x,y,waiting,k){
  return '<g transform="translate('+x+','+y+') scale('+(k||1)+')"><g class="crew">'
-  +'<path class="sh" d="M9 20a11 11 0 0 1 22 0v6a11 11 0 0 1-22 0z"/>'
-  +'<path class="sh" d="M12 13a9 9 0 0 1 17 3"/>'
-  +'<circle class="vz" cx="16" cy="23" r="1.9"/><circle class="vz" cx="25" cy="23" r="1.9"/>'
-  +'<path class="lid" d="M13 23q3 2.6 6 0"/><path class="lid" d="M22 23q3 2.6 6 0"/>'
-  +'<path class="rig" d="M17 31q4 2.5 8 0"/>'
-  +'<text class="zzz" x="33" y="12">z</text>'
-  +'<text class="zzz" x="36" y="8">z</text>'
-  +'<text class="zzz" x="39" y="4">z</text>'
-  +(waiting?'<circle class="think" cx="33" cy="12" r="2"/>'
-           +'<circle class="think" cx="37" cy="7" r="2.8"/>'
-           +'<circle class="think" cx="42" cy="1" r="3.6"/>':'')
+  // face and ears
+  +'<circle class="face" cx="8.5" cy="26" r="2.2"/>'
+  +'<circle class="face" cx="31.5" cy="26" r="2.2"/>'
+  +'<path class="face" d="M10 22a10 10 0 0 1 20 0v5.5a10 10 0 0 1-20 0z"/>'
+  // cap: crown, band, gold badge, peak over the brow
+  +'<path class="cap" d="M8 17.5a12 12 0 0 1 24 0v1.5H8z"/>'
+  +'<rect class="capb" x="7" y="17.5" width="26" height="4.2" rx="2"/>'
+  +'<path class="medal" d="M20 6.4l1.7 3.5 3.8.5-2.8 2.7.7 3.8L20 15l-3.4 1.9'
+  +'.7-3.8-2.8-2.7 3.8-.5z"/>'
+  +'<path class="peak" d="M5 21.6h30a4.6 4.6 0 0 1-4.6 3.6H9.6A4.6 4.6 0 0 1 5 21.6z"/>'
+  // eyes, shut when he is off duty
+  +'<circle class="hEye" cx="16" cy="28" r="1.9"/>'
+  +'<circle class="hEye" cx="24" cy="28" r="1.9"/>'
+  +'<path class="hlid" d="M13.2 28q2.8 2.4 5.6 0"/>'
+  +'<path class="hlid" d="M21.2 28q2.8 2.4 5.6 0"/>'
+  // moustache
+  +'<path class="tash" d="M20 33.4c-1.5-2.3-5.2-2.6-6.4-.6-1 1.7.5 3.3 2.7 3.3'
+  +' 1.6 0 2.9-.9 3.7-2.1.8 1.2 2.1 2.1 3.7 2.1 2.2 0 3.7-1.6 2.7-3.3'
+  +'-1.2-2-4.9-1.7-6.4.6z"/>'
+  +'<text class="zzz" x="34" y="14">z</text>'
+  +'<text class="zzz" x="37" y="9">z</text>'
+  +'<text class="zzz" x="40" y="4">z</text>'
+  +(waiting?'<circle class="think" cx="35" cy="13" r="2"/>'
+           +'<circle class="think" cx="39" cy="8" r="2.8"/>'
+           +'<circle class="think" cx="44" cy="2" r="3.6"/>':'')
   +'</g></g>'}
 
 /* A dream when asleep (trailing puffs), a speech bubble when awake
    (a tail pointing back at whoever is talking). */
+/* ---- candidate bubbles -------------------------------------------
+   While an agent is waiting on you, its options hang from it on strings.
+   Click one to see it full size; the Pick button stays in the review
+   card, so a stray click never chooses for you. */
+/* Which candidate set the open question is about, so only that tray
+   offers a Pick button. */
+function pendKey(d){
+ var p=d.pending;if(!p||!p.artifact)return null;
+ var m=String(p.artifact).match(/sheets\/(.+)\.(?:png|jpg|jpeg|webp)$/i);
+ return m?m[1]:null}
+
+/* Deterministic jitter, so bubbles keep their places between renders. */
+function jit(i,n){var x=Math.sin((i+1)*12.9898)*43758.5453;return (x-Math.floor(x))*n}
+
+/* They hang below the agent and fan out to the right, into the room the
+   row opened for them - so nothing collides with the stage above. */
+function bubPos(i,n,ax,ay){
+ var t=n===1?.5:i/(n-1),r=26+jit(i+2,5);
+ return {x:ax+58+t*Math.min(400,70*n)+jit(i+9,14),
+         y:ay+104-Math.sin(t*Math.PI)*30+jit(i+4,20),
+         r:r}}
+
+/* ---- the bubble board -------------------------------------------
+   One bubble per subject - Theo, The Door, each keyframe - all held
+   from a single knot. Click a subject and its own options pop out
+   beneath it as smaller bubbles you can open and pick. */
+var SW=560;
+
+function rowPos(i,n,cx,y,spread){
+ var t=n===1?.5:i/(n-1);
+ return {x:cx-spread/2+t*spread+jit(i+9,10),
+         y:y-Math.sin(t*Math.PI)*20+jit(i+4,12)}}
+
+/* An arc of radius R from a0 to a1 degrees, 0 = right, clockwise. */
+function arc(R,a0,a1){
+ var p=function(a){a=a*Math.PI/180;
+   return (R*Math.cos(a)).toFixed(2)+' '+(R*Math.sin(a)).toFixed(2)};
+ return 'M'+p(a0)+'A'+R.toFixed(2)+' '+R.toFixed(2)+' 0 '
+   +(Math.abs(a1-a0)>180?1:0)+' 1 '+p(a1)}
+
+function oneBub(d,id,file,r,label,badge,cls){
+ var sl=String(id).replace(/[^a-z0-9]+/gi,''),o='';
+ var k=0;for(var c=0;c<sl.length;c++)k=(k*31+sl.charCodeAt(c))%997;
+ o+='<g class="bubw'+(cls||'')+'" data-bub="'+id+'">'
+  +'<g class="bubf'+[' ',' d2',' d3'][k%3].trim().replace(/^/,k%3?' ':'')
+  +'" style="animation-delay:-'+((k%90)*0.13).toFixed(2)
+  +'s;animation-duration:'+(8.5+(k%11)*0.55).toFixed(2)+'s">';
+ // the picture hangs inside the bubble rather than being painted on it:
+ // faded, and softened into the film instead of cut off at the rim
+ if(file)o+='<image class="inner" href="'+fileUrl(d.name,file)+'" x="'+(-r+2)
+  +'" y="'+(-r+2)+'" width="'+(2*r-4)+'" height="'+(2*r-4)
+  +'" preserveAspectRatio="xMidYMid slice" mask="url(#mFade)"/>';
+ // A soap bubble's light is not an even ring: a thick bright crescent
+ // pools along the lower-left where the film catches the key light, the
+ // colour bands gather opposite it, and the middle stays clear.
+ o+='<circle class="film" cx="0" cy="0" r="'+r+'"/>'
+  +'<path class="crescent" d="'+arc(r*0.80,104,196)+'" stroke-width="'+(r*0.17)+'"/>'
+  +'<path class="crescent2" d="'+arc(r*0.865,112,188)+'" stroke-width="'+(r*0.055)+'"/>'
+  +'<path class="irid" d="'+arc(r*0.84,-74,26)+'" stroke-width="'+(r*0.15)+'"/>'
+  +'<path class="irid2" d="'+arc(r*0.80,206,268)+'" stroke-width="'+(r*0.11)+'"/>'
+  +'<circle class="rimo" cx="0" cy="0" r="'+(r-0.5)+'"/>'
+  +'<path class="rimlit" d="'+arc(r-0.5,96,206)+'"/>'
+  +'<ellipse class="spec" cx="'+(-r*0.34)+'" cy="'+(-r*0.46)+'" rx="'+(r*0.30)
+  +'" ry="'+(r*0.15)+'" transform="rotate(-34)"/>'
+  +'<ellipse class="spec3" cx="'+(-r*0.30)+'" cy="'+(-r*0.50)+'" rx="'+(r*0.13)
+  +'" ry="'+(r*0.06)+'" transform="rotate(-34)"/>'
+  +'<circle class="spec2" cx="'+(r*0.40)+'" cy="'+(r*0.46)+'" r="'+(r*0.07)+'"/>';
+ if(badge)o+='<rect class="bubnb" x="-10" y="'+(r-7)+'" width="20" height="14" rx="7"/>'
+  +'<text class="bubn" x="0" y="'+(r+3)+'" text-anchor="middle">'+esc(badge)+'</text>';
+ if(label)o+='<text class="bubl" x="0" y="'+(r+24)+'" text-anchor="middle">'
+  +esc(cut(label,16))+'</text>';
+ return o+'</g></g>'}
+
+/* items: [{key,label,thumb,files}] - one entry per subject/keyframe */
+function bubbleBoard(d,items,pend){
+ items=(items||[]).filter(function(x){return (x.files&&x.files.length)||x.thumb});
+ if(!items.length)return '';
+ var n=items.length,open=null;
+ items.forEach(function(x){if(x.key===bubOpen)open=x});
+ var H=open?352:206,KY=H-22,str='',bub='',R=34;
+ for(var i=0;i<n;i++){
+  var x=items[i],p=rowPos(i,n,SW/2,92,Math.min(SW-150,120*n)),
+      sel=open&&open.key===x.key,r=sel?R+10:R;
+  x._p=p;x._r=r;
+  // the string ends well inside the bubble, which is drawn over it, so
+  // drifting never opens a gap between the two
+  str+='<path class="str" d="M60 '+KY+'Q'+((60+p.x)/2)+' '+(KY+12)+' '
+      +p.x+' '+(p.y+r*0.55)+'"/>';
+  bub+='<g transform="translate('+p.x.toFixed(1)+','+p.y.toFixed(1)+')">'
+   +oneBub(d,x.key,x.thumb||x.files[0],r,x.label,
+           x.files.length>1?x.files.length:'',sel?' on':'')+'</g>'}
+ if(open){                                   // its options, popped out
+  var f=open.files,m=f.length,pp=open._p,
+      cy=Math.min(H-66,pp.y+150),
+      spread=Math.min(SW-180,86*m),
+      // children hang under their own parent, clamped to stay on the board
+      cx=Math.max(spread/2+54,Math.min(SW-spread/2-54,pp.x)),
+      pick=(bubPick&&bubPick.key===open.key)?bubPick.n:0;
+  for(i=0;i<m;i++){
+   var q=rowPos(i,m,cx,cy,spread),
+       on=pick===i+1,cr=on?36:27,cid=open.key+':'+(i+1);
+   str+='<path class="str kid" d="M'+pp.x+' '+(pp.y+open._r*0.55)+'Q'
+      +((pp.x+q.x)/2)+' '+((pp.y+q.y)/2+26)+' '+q.x+' '+(q.y-cr*0.55)+'"/>';
+   bub+='<g transform="translate('+q.x.toFixed(1)+','+q.y.toFixed(1)+')">'
+    +oneBub(d,cid,f[i],cr,'',String(i+1),on?' on':'')+'</g>'}}
+ var card='';
+ if(open&&bubPick&&bubPick.key===open.key){
+  var fl=open.files[bubPick.n-1],canPick=pend===open.key;
+  card='<div class="card" style="margin-top:0"><div class="ct">'
+   +esc(open.label)+' &mdash; option #'+bubPick.n+' of '+open.files.length+'</div>'
+   +'<img class="pv" style="max-height:460px" src="'+fileUrl(d.name,fl)+'">'
+   +'<div class="row" style="margin-top:8px">'
+   +(canPick?'<button class="ok" data-ans="'+bubPick.n+'">Pick this one (#'
+     +bubPick.n+')</button>':'<span class="m">This stage is not open for '
+     +'answers right now.</span>')
+   +'<a class="btn" href="'+fileUrl(d.name,fl)+'" target="_blank">Open full size</a>'
+   +'<button data-bub="'+open.key+':'+bubPick.n+'">Close</button></div></div>'}
+ return '<div class="tray"><svg viewBox="0 0 '+SW+' '+H+'" role="img"><defs>'
+  +'<linearGradient id="gBub" x1="0" y1="0" x2=".85" y2="1">'
+  +'<stop offset="0" stop-color="#8fd4ff"/><stop offset=".22" stop-color="#b9a6ff"/>'
+  +'<stop offset=".44" stop-color="#ffb8e6"/><stop offset=".62" stop-color="#ffe6a3"/>'
+  +'<stop offset=".8" stop-color="#a8f0d4"/><stop offset="1" stop-color="#9fd8ff"/>'
+  +'</linearGradient>'
+  +'<linearGradient id="gBub2" x1="0" y1="1" x2="1" y2="0">'
+  +'<stop offset="0" stop-color="#ffb8e6"/><stop offset=".45" stop-color="#c7b3ff"/>'
+  +'<stop offset="1" stop-color="#9ee6ff"/></linearGradient>'
+  // thin film: invisible in the middle, barely tinted where it thickens
+  +'<radialGradient id="gFilm">'
+  +'<stop offset="0" stop-color="#ffffff" stop-opacity="0"/>'
+  +'<stop offset=".62" stop-color="#cfe9ff" stop-opacity=".03"/>'
+  +'<stop offset=".86" stop-color="#bfe4ff" stop-opacity=".09"/>'
+  +'<stop offset=".97" stop-color="#e2d6ff" stop-opacity=".18"/>'
+  +'<stop offset="1" stop-color="#ffffff" stop-opacity=".06"/></radialGradient>'
+  +'<filter id="fSoft" x="-50%" y="-50%" width="200%" height="200%">'
+  +'<feGaussianBlur stdDeviation="1.6"/></filter>'
+  // one mask for every bubble: the picture dissolves into the film
+  // rather than being cut off at a hard circular edge
+  +'<radialGradient id="gFade">'
+  +'<stop offset="0" stop-color="#ffffff" stop-opacity="1"/>'
+  +'<stop offset=".62" stop-color="#ffffff" stop-opacity=".96"/>'
+  +'<stop offset=".86" stop-color="#ffffff" stop-opacity=".55"/>'
+  +'<stop offset="1" stop-color="#ffffff" stop-opacity="0"/></radialGradient>'
+  +'<mask id="mFade" maskContentUnits="objectBoundingBox">'
+  +'<circle cx=".5" cy=".5" r=".5" fill="url(#gFade)"/></mask>'
+  +'</defs>'
+  +str+'<circle class="knot" cx="60" cy="'+KY+'" r="4"/>'+bub+'</svg>'
+  +'<div class="m">'+(open?'Options for '+esc(open.label)
+    +' &mdash; click one to open it, or click '+esc(open.label)+' again to close'
+    :'Click a bubble to see its options')+'</div>'+card+'</div>'}
+
 /* No panels any more, so each node needs an invisible click target and
    the selected one needs something to mark it. */
 function hit(x,y,w,h){
@@ -380,9 +617,9 @@ function bubble(bx,by,bw,title,sub,dream){
  return o+'</g>'}
 
 function renderFlow(d,sel){
- var NS=ST.filter(function(s){return s.id!=='final'}).length,
-     Y=function(i){return 56+i*120},H=86,out=[],
-     cur=d.state.current||{},live=cur.stage,pend=d.pending;
+ var NS=ST.filter(function(s){return s.id!=='final'}).length,H=86,out=[],
+     cur=d.state.current||{},live=cur.stage,pend=d.pending,
+     Y=function(i){return 56+i*120};
  out.push('<svg viewBox="0 0 900 '+(Y(NS)+96)+'" role="img"><defs>'
   +'<linearGradient id="gShell" x1="0" y1="0" x2="0" y2="1">'
   +'<stop offset="0" stop-color="#ffffff"/><stop offset=".55" stop-color="#f4f2ee"/>'
@@ -391,7 +628,11 @@ function renderFlow(d,sel){
   +'<stop offset="0" stop-color="#3a3a3c"/><stop offset=".4" stop-color="#17171a"/>'
   +'<stop offset="1" stop-color="#0c0c0e"/></linearGradient>'
   +'<radialGradient id="gHalo"><stop offset="0" stop-color="#ffffff" stop-opacity=".16"/>'
-  +'<stop offset="1" stop-color="#ffffff" stop-opacity="0"/></radialGradient></defs>');
+  +'<stop offset="1" stop-color="#ffffff" stop-opacity="0"/></radialGradient>'
+  +'<linearGradient id="gBub" x1="0" y1="0" x2="1" y2="1">'
+  +'<stop offset="0" stop-color="#9ad8ff"/><stop offset=".3" stop-color="#c3a8ff"/>'
+  +'<stop offset=".55" stop-color="#ffc2e8"/><stop offset=".78" stop-color="#b8f2d8"/>'
+  +'<stop offset="1" stop-color="#ffe9a8"/></linearGradient></defs>');
  var rw=lastRewind(d),ids=ST.map(function(s){return s.id}),
      ti=rw?ids.indexOf(rw.stage):-1;
  out.push('<path class="back" d="M760 56V22H20V'+(Y(NS-1)+H/2)+'"/>');
@@ -432,12 +673,14 @@ function renderFlow(d,sel){
    +bubble(108,y+(asleep?27:19),228,s.n,asleep?null:cut(sub,31),asleep)
    +(rc?'<text class="badge" x="344" y="'+(y+14)+'" text-anchor="end">redone x'+rc+'</text>':'')
    +'</g>');
-  // The inspector is awake only while a question is actually open.
-  var rs=st==='review'?'review':(st==='done'?'done':'pending'),rz=rs!=='review';
+  // The inspector is awake only while a question is actually open, and
+  // says which of the three states this review is in.
+  var rs=st==='review'?'review':(st==='done'?'done':'pending'),rz=rs!=='review',
+      rn={done:'Reviewed',review:'Reviewing',pending:'To be reviewed'}[rs];
   out.push('<g class="node '+rs+(rz?' asleep':'')+'" data-stage="'+s.id
    +'" data-tab="feedback">'
    +hit(386,y-6,206,H+12)+inspector(392,y+16,!rz,1.3)
-   +bubble(448,y+(rz?27:19),134,'You review',rz?null:'Waiting for you',rz)
+   +bubble(448,y+(rz?27:19),150,rn,rz?null:'Waiting for you',rz)
    +'</g>')});
 
  var mh=Y(NS-1)+H-56,ml=wrap(masterText(d),24,6),
@@ -465,6 +708,8 @@ function previewHtml(d,rel){if(!rel)return'';var u=fileUrl(d.name,rel),x=rel.toL
  if(/\.(png|jpg|jpeg|webp)$/.test(x))return'<a href="'+u+'" target="_blank"><img class="pv" src="'+u+'"></a>';
  if(/\.(mp4|webm|mov)$/.test(x))return'<video class="pv" controls preload="metadata" src="'+u+'"></video>';return''}
 function renderReview(d){var p=d.pending,h=headline(d);
+ // a new question clears whichever bubble you had open
+ if(bubFor!==(p&&p.id)){bubFor=p&&p.id;bubPick=null}
  if(!p){var extra=h.k==='stopped'?'<div class="hint">Resume it with:  python -m studio.main resume '+esc(d.name)+'</div>':'<div class="hint">When a stage is ready, your review appears here. You can also answer in the terminal.</div>';
   return'<div class="card"><div class="ct">'+esc(h.t)+'</div>'+extra+'</div>'}
  var o=p.options||'',m=o.match(/1-(\d+)/),n=m?+m[1]:0,retake=/\[t\]|\bt for\b|\bt = /.test(o),skip=/\bs = /.test(o),btn=[];
@@ -493,10 +738,14 @@ function outPlan(d){var p=d.files.plan;if(!p)return empty('The plan has not been
 function outScript(d){var s=d.files.script;if(!s)return empty('The script has not been written yet.');
  return'<table><tr><th>Shot</th><th>Mode</th><th>Sec</th><th>Start</th><th>What happens</th></tr>'+s.shots.map(function(x){return'<tr><td><b>'+esc(x.id)+'</b></td><td>'+esc(x.mode)+'</td><td>'+esc(x.duration)+'</td><td>'+(x.start_from==='previous_last_frame'?'chained':'keyframe')+'</td><td>'+esc(x.beat)+(x.bubble_text?'<div class="m">'+esc(x.bubble_type)+' bubble: "'+esc(x.bubble_text)+'"</div>':'')+'<details><summary>Prompts</summary>'+(x.start_image_prompt?'<pre><b>Start image:</b> '+esc(x.start_image_prompt)+'</pre>':'')+(x.end_image_prompt?'<pre><b>End image:</b> '+esc(x.end_image_prompt)+'</pre>':'')+'<pre><b>Motion:</b> '+esc(x.motion_prompt)+'</pre>'+(x.edit_note?'<pre><b>Edit note:</b> '+esc(x.edit_note)+'</pre>':'')+'</details></td></tr>'}).join('')+'</table>'}
 function outImages(d){var n=needed(d);if(!n.length)return empty('No keyframes are needed yet: the script has not been approved.');
- return n.map(function(k){var kf=d.keyframes[k.key],c=d.candidates[k.key]||[];
-  return'<div class="item'+(kf?' chosen':'')+'"><b>'+esc(k.key)+'</b>'+pills([kf?'picked':'not picked yet'])+'<div class="m">'+esc(k.shot.beat)+'</div>'+
-  (kf?'<div class="thumbs"><a href="'+fileUrl(d.name,kf)+'" target="_blank"><img class="big" src="'+fileUrl(d.name,kf)+'"></a></div>':'')+
-  (c.length?'<div class="m" style="margin-top:6px">Options generated ('+c.length+')</div><div class="thumbs">'+c.map(function(r,i){return'<a href="'+fileUrl(d.name,r)+'" target="_blank" title="option '+(i+1)+'"><img src="'+fileUrl(d.name,r)+'"></a>'}).join('')+'</div>':'')+'</div>'}).join('')}
+ var items=n.map(function(k){return{key:k.key,label:k.key,
+   thumb:d.keyframes[k.key]||null,files:d.candidates[k.key]||[]}});
+ var board=bubbleBoard(d,items,pendKey(d));
+ return board+n.map(function(k){var kf=d.keyframes[k.key];
+  return'<div class="item'+(kf?' chosen':'')+'"><b>'+esc(k.key)+'</b>'
+   +pills([kf?'picked':'not picked yet'])+'<div class="m">'+esc(k.shot.beat)+'</div>'
+   +(kf?'<div class="thumbs"><a href="'+fileUrl(d.name,kf)+'" target="_blank"><img class="big" src="'+fileUrl(d.name,kf)+'"></a></div>':'')
+   +'</div>'}).join('')}
 function outClips(d){var s=d.files.script;if(!s)return empty('No shots yet.');
  return s.shots.map(function(x){var ap=d.clips[x.id],tk=(d.takes[x.id]||[]),rel=ap||tk[tk.length-1];
   return'<div class="item'+(ap?' chosen':'')+'"><b>'+esc(x.id)+'</b>'+pills([x.mode,x.duration+' s',ap?'approved':(rel?'draft take':'not generated')])+'<div class="m">'+esc(x.beat)+'</div>'+(rel?'<video class="pv" controls preload="metadata" src="'+fileUrl(d.name,rel)+'"></video>':'')+'</div>'}).join('')}
@@ -520,10 +769,19 @@ function castSubjects(d){var p=d.files.plan||{},out=[];
 function outCast(d){var subs=castSubjects(d),c=d.cast||{};
  if(!subs.length)return empty('The plan has no characters, locations or props, so there is nothing to cast.');
  var html='',last='';
+ var items=subs.map(function(s){var ck=castKey(s.e.name);
+   return{key:ck,label:s.e.name,thumb:c[s.e.name]||null,
+          files:(d.candidates||{})[ck]||[]}});
+ html+=bubbleBoard(d,items,pendKey(d));
  subs.forEach(function(s){var x=s.e,r=c[x.name];
   if(s.kind!==last){html+='<h3>'+s.kind+'</h3>';last=s.kind}
-  html+='<div class="item"><b>'+esc(x.name)+'</b>'+(r?'<img class="pv" style="max-height:320px" src="'+fileUrl(d.name,r)+'">':'<div class="m">not cast yet</div>')+'<div class="m">'+esc(x.locked_description)+'</div></div>'});
+  html+='<div class="item'+(r?' chosen':'')+'"><b>'+esc(x.name)+'</b>'
+   +pills([r?'cast':'not cast yet'])
+   +(r?'<img class="pv" style="max-height:320px" src="'+fileUrl(d.name,r)+'">':'')
+   +'<div class="m">'+esc(x.locked_description)+'</div></div>'});
  return html}
+function castKey(name){return 'cast_'+String(name).toLowerCase()
+ .replace(/[^a-z0-9]+/g,'_').replace(/^_|_$/g,'')}
 function renderOutput(d,id){return({trend:outTrend,plan:outPlan,script:outScript,cast:outCast,images:outImages,clips:outClips,audio:outAudio,final:outFinal}[id]||outTrend)(d)}
 function renderMaster(d,id){var m=d.masters[id];if(id==='final')m=d.masters.audio;
  if(!m)return empty('No Master decision for this stage yet. The Master agent only acts when you give feedback at a review.');
@@ -663,7 +921,7 @@ function autoRead(d){var a=document.getElementById('vAuto');if(!a||!a.checked||!
 var data=null,proj=null,sel=null,tab='output',el={};
 function curStage(){if(sel)return sel;var c=(data.state.current||{}).stage;if(c)return c;var ap=data.state.approved||{};for(var i=0;i<ST.length;i++)if(ST[i].id!=='final'&&!ap[ST[i].id])return ST[i].id;return'final'}
 function setHTML(e,h){if(e&&e._h!==h){e.innerHTML=h;e._h=h}}
-var view='flow',selMsg=null;
+var view='flow',selMsg=null,bubPick=null,bubOpen=null,bubFor=null;
 function renderComm(){var msgs=commMsgs(data,comm);
  setHTML(el.cstats,(data.pending?'<div class="card amber" style="grid-column:1/-1;margin:0"><b>Waiting for you: '+esc(data.pending.title)+'</b> <button data-view="flow" style="margin-left:10px">Answer in the Flow view</button></div>':'')+renderCommStats(data));setHTML(el.chead,renderCommHead(data));
  var sc=el.cscroll,stick=commStick||sc.scrollHeight-sc.scrollTop-sc.clientHeight<60;
@@ -698,7 +956,14 @@ function offline(){
   +esc(proj||'&lt;project&gt;')+'</code></div></div>')}
 function load(){if(!proj)return;fetch(q('/api/project?name='+encodeURIComponent(proj))).then(function(r){return r.json()}).then(function(d){if(d.error)throw 0;data=d;render();autoRead(d)}).catch(offline)}
 function send(text){var p=data&&data.pending;if(!p)return;fetch(q('/api/answer'),{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({project:proj,id:p.id,text:text})}).catch(function(){offline();throw 0}).then(function(r){if(!r.ok){alert('That question was already answered or closed - reloading.');load();return}else{el.review.innerHTML='<div class="card"><div class="ct">Sent: waiting for the studio…</div></div>';el.review._h=null;setTimeout(load,700)}})}
-function onClick(e){var t=e.target.closest('[data-mic],[data-speak],[data-autosend],[data-ans],[data-send],[data-tab],[data-follow],[data-allfb],[data-stage],[data-view],[data-msg]');if(!t)return;
+function onClick(e){var t=e.target.closest('[data-bub],[data-mic],[data-speak],[data-autosend],[data-ans],[data-send],[data-tab],[data-follow],[data-allfb],[data-stage],[data-view],[data-msg]');if(!t)return;
+ if(t.dataset.bub!==undefined){var b=String(t.dataset.bub).split(':');
+  if(b.length===1){                       // a subject: open or close it
+   bubOpen=(bubOpen===b[0]?null:b[0]);bubPick=null}
+  else{                                   // one of its options
+   var nn=+b[1];
+   bubPick=(bubPick&&bubPick.key===b[0]&&bubPick.n===nn)?null:{key:b[0],n:nn}}
+  render();return}
  if(t.dataset.mic!==undefined){micToggle();return}
  if(t.dataset.autosend!==undefined){V.autoSend=t.checked;return}
  if(t.dataset.speak){if(t.dataset.speak==='master'){var m=data.masters[t.dataset.stageId==='final'?'audio':t.dataset.stageId];if(m)speak(masterText2(m))}else if(data.pending)speak(pendingText(data.pending));return}
