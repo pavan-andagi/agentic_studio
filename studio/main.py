@@ -205,6 +205,20 @@ def main():
           f"\nEdit notes: "
           f"{p.dir / '5_edit_notes.json'}\nFeedback log: {p.state_file}")
 
+    # The dashboard runs on a daemon thread inside this process, so quitting
+    # here would kill it and leave the browser frozen on the last question
+    # it saw - which looks like the pipeline hung at the final gate.
+    # Stay alive so the finished project stays browsable.
+    if dcfg.get("enabled", True) and dcfg.get("stay_open", True):
+        port = dcfg.get("port", 8765)
+        print(f"\nDashboard still serving on port {port} - the run is "
+              f"finished.\nPress Ctrl-C when you are done looking at it.")
+        try:
+            while True:
+                time.sleep(3600)
+        except KeyboardInterrupt:
+            print("\nDashboard stopped.")
+
 
 if __name__ == "__main__":
     main()
