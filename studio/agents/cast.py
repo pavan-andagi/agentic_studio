@@ -102,6 +102,29 @@ def _replace_description(p, old, new):
     p.write_json("3_script.json", script)
 
 
+def _candidates(ctx, kind, c, style, n, w, h, turn):
+    """Generate n options for one subject and return the files."""
+    p, cfg = ctx.project, ctx.cfg
+    name = c["name"]
+    sheet_view = turn and kind == "character"
+    tmpl = TURNAROUND if sheet_view else REF[kind]
+    prompt = tmpl.format(name=name, desc=c["locked_description"], style=style)
+    gw, gh = (max(w, h), min(w, h)) if sheet_view else (w, h)
+    print(f"\n[Cast agent] {name} ({kind})"
+          f"{' turnaround' if sheet_view else ''}: generating {n} options ...")
+    p.set_status("cast", "working", f"generating {n} options for {name}")
+    out = []
+    for i in range(n):
+        files = ctx.comfy.run(cfg["comfy"]["workflows"]["image"], {
+            "@PROMPT": prompt, "@SEED": random.randint(1, 2**31),
+            "@WIDTH": gw, "@HEIGHT": gh,
+            "@FILENAME": f"studio/{p.dir.name}_cast_{slug(name)}"},
+            p.dir / "candidates" / f"cast_{slug(name)}",
+            label=f"{name} #{i + 1}")
+        out += [f for f in files if f.suffix.lower() in IMG_EXT]
+    return out
+
+
 def run(ctx, feedback=None, items=None):
     p, cfg = ctx.project, ctx.cfg
     plan = p.read_json("2_plan.json")
@@ -110,6 +133,7 @@ def run(ctx, feedback=None, items=None):
     kinds = p.state.setdefault("cast_kinds", {})     # name -> kind
     views = p.state.setdefault("cast_views", {})     # name -> single|turnaround
     used = p.state.setdefault("cast_descriptions", {})
+    pool = p.state.setdefault("cast_options", {})    # name -> [candidate files]
     if not subs:
         return StageResult("No characters, locations or props in the plan: "
                            "nothing to cast. Keyframes use plain "
@@ -130,13 +154,13 @@ def run(ctx, feedback=None, items=None):
         subs = [(k, c) for k, c in subs if k in only]
     w, h = cfg["defaults"]["image_size"]
     turn = ccfg.get("turnaround", False)
-    # a front+back sheet needs a landscape frame to hold two full bodies
-    tw, th = max(w, h), min(w, h)
     n = ccfg.get("options", 3)
     style = plan.get("style_line", "")
     out = p.dir / "cast"
     out.mkdir(exist_ok=True)
 
+    # ---- which subjects still need a reference -------------------------
+    todo = []
     for kind, c in subs:
         name = c["name"]
         kinds[name] = kind
@@ -144,29 +168,36 @@ def run(ctx, feedback=None, items=None):
             cast.pop(name)                           # description changed
         if feedback and (not items or name in items or slug(name) in items):
             cast.pop(name, None)
+            pool.pop(name, None)                     # options are stale too
             _revise(ctx, plan, c, feedback)
         if cast.get(name) and Path(cast[name]).exists():
             continue
+        todo.append((kind, c))
+
+    # ---- phase 1: generate every option set first, no questions asked ---
+    # So the GPU runs unattended and you review the whole cast in one go,
+    # instead of waiting at a gate between each subject.
+    if ccfg.get("batch", True) and len(todo) > 1:
+        missing = [(k, c) for k, c in todo if not pool.get(c["name"])]
+        if missing:
+            print(f"\n[Cast agent] generating options for "
+                  f"{len(missing)} subjects before asking anything ...")
+            for kind, c in missing:
+                pool[c["name"]] = [str(f) for f in _candidates(
+                    ctx, kind, c, style, n, w, h, turn)]
+                p.save()                             # survive a crash
+            print(f"\n[Cast agent] all options ready - now pick them.")
+
+    # ---- phase 2: pick ---------------------------------------------------
+    for kind, c in todo:
+        name = c["name"]
         while True:
             sheet_view = turn and kind == "character"
-            print(f"\n[Cast agent] {name} ({kind})"
-                  f"{' turnaround' if sheet_view else ''}: "
-                  f"generating {n} options ...")
-            p.set_status("cast", "working",
-                         f"generating {n} options for {name}")
-            tmpl = TURNAROUND if sheet_view else REF[kind]
-            prompt = tmpl.format(name=name, desc=c["locked_description"],
-                                 style=style)
-            gw, gh = (tw, th) if sheet_view else (w, h)
-            cands = []
-            for i in range(n):
-                files = ctx.comfy.run(cfg["comfy"]["workflows"]["image"], {
-                    "@PROMPT": prompt, "@SEED": random.randint(1, 2**31),
-                    "@WIDTH": gw, "@HEIGHT": gh,
-                    "@FILENAME": f"studio/{p.dir.name}_cast_{slug(name)}"},
-                    p.dir / "candidates" / f"cast_{slug(name)}",
-                    label=f"{name} #{i + 1}")
-                cands += [f for f in files if f.suffix.lower() in IMG_EXT]
+            cands = [Path(x) for x in pool.get(name, []) if Path(x).exists()]
+            if not cands:
+                cands = _candidates(ctx, kind, c, style, n, w, h, turn)
+                pool[name] = [str(f) for f in cands]
+                p.save()
             sheet = image_grid(cands, p.dir / "sheets" / f"cast_{slug(name)}.png")
             open_file(sheet)
             what = {"character": "character", "prop": "object",
@@ -187,6 +218,7 @@ def run(ctx, feedback=None, items=None):
                 src = cands[int(val) - 1]
             elif action == "pick" and val.lower() == "t":
                 p.event("cast", "human_pick", f"{name}: new options")
+                pool.pop(name, None)                 # regenerate just this one
                 continue
             elif action == "pick" and Path(val).exists():
                 src = Path(val)
@@ -194,6 +226,7 @@ def run(ctx, feedback=None, items=None):
                 p.log("cast", "human", f"{name}: {val}")
                 p.event("cast", "agent_feedback", f"{name}: {val}")
                 _revise(ctx, plan, c, val)
+                pool.pop(name, None)                 # description changed
                 continue
             elif action == "quit":
                 raise SystemExit("Saved. Resume later.")
@@ -205,6 +238,7 @@ def run(ctx, feedback=None, items=None):
             cast[name] = str(dest)
             views[name] = "turnaround" if sheet_view else "single"
             used[name] = c["locked_description"]
+            pool.pop(name, None)                     # chosen; free the list
             p.event("cast", "human_pick", f"{name}: reference chosen")
             _drop_keyframes_with(p, name)            # old keyframes, old look
             p.save()

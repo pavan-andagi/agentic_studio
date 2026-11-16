@@ -196,6 +196,21 @@ def rewrite(ctx, prompt, feedback):
                             )["prompt"]
 
 
+def _candidates(ctx, sh, key, field, n, w, h):
+    """Generate n options for one keyframe and return the files."""
+    p = ctx.project
+    print(f"\n[Image agent] {key}: generating {n} options ...")
+    p.set_status("images", "working", f"generating {n} options for {key}")
+    who = cast_for(ctx, sh) if use_edit(ctx, sh) else []
+    if who:
+        print("  with references: " + ", ".join(
+            f"{c} ({kind_of(ctx, c)})" for c in who))
+    cands = []
+    for i in range(n):
+        cands += generate(ctx, sh, sh[field], key, i, w, h)
+    return cands
+
+
 def run(ctx, feedback=None, items=None):
     p, cfg = ctx.project, ctx.cfg
     w, h = cfg["defaults"]["image_size"]
@@ -203,28 +218,51 @@ def run(ctx, feedback=None, items=None):
     script = p.read_json("3_script.json")
     done = p.state["keyframes"]
     used = p.state.setdefault("keyframe_prompts", {})
+    pool = p.state.setdefault("keyframe_options", {})   # key -> [candidates]
 
+    # ---- which keyframes still need picking -----------------------------
+    todo = []
     for sh, which in needed(script):
         key, field = f"{sh['id']}_{which}", f"{which}_image_prompt"
         sig = signature(ctx, sh, field)
         if key in done and used.get(key, sig) != sig:
             done.pop(key)                     # the script changed this image
+            pool.pop(key, None)
             p._drop_clips({sh["id"]})
-        if key in done:
-            continue
+        # Feedback is checked BEFORE the "already picked" skip, otherwise
+        # asking to redo a keyframe you already approved does nothing.
         if feedback and (not items or sh["id"] in items or key in items):
             sh[field] = rewrite(ctx, sh[field], feedback)
             p.write_json("3_script.json", script)
+            done.pop(key, None)               # this one is being redone
+            pool.pop(key, None)               # options were for the old prompt
+            p._drop_clips({sh["id"]})
+            print(f"  redoing {key}")
+        if key in done:
+            continue
+        todo.append((sh, which, key, field))
+
+    # ---- phase 1: render every keyframe's options before asking anything -
+    if cfg["defaults"].get("batch_keyframes", True) and len(todo) > 1:
+        missing = [t for t in todo if not pool.get(t[2])]
+        if missing:
+            print(f"\n[Image agent] rendering options for {len(missing)} "
+                  f"keyframes before asking anything ...")
+            for sh, which, key, field in missing:
+                pool[key] = [str(f) for f in
+                             _candidates(ctx, sh, key, field, n, w, h)]
+                p.save()                      # survive a crash mid-batch
+            print("\n[Image agent] all options ready - now pick them.")
+
+    # ---- phase 2: pick ---------------------------------------------------
+    for sh, which, key, field in todo:
         while True:
-            print(f"\n[Image agent] {key}: generating {n} options ...")
-            p.set_status("images", "working", f"generating {n} options for {key}")
-            cands = []
+            cands = [Path(x) for x in pool.get(key, []) if Path(x).exists()]
+            if not cands:
+                cands = _candidates(ctx, sh, key, field, n, w, h)
+                pool[key] = [str(f) for f in cands]
+                p.save()
             who = cast_for(ctx, sh) if use_edit(ctx, sh) else []
-            if who:
-                print("  with references: " + ", ".join(
-                    f"{n} ({kind_of(ctx, n)})" for n in who))
-            for i in range(n):
-                cands += generate(ctx, sh, sh[field], key, i, w, h)
             sheet = image_grid(cands, p.dir / "sheets" / f"{key}.png")
             open_file(sheet)
             action, val = gate(
@@ -239,6 +277,7 @@ def run(ctx, feedback=None, items=None):
                 p.event("images", "human_pick", f"{key}: picked option #{val}")
             elif action == "pick" and val.lower() == "t":
                 p.event("images", "human_pick", f"{key}: new options, same prompt")
+                pool.pop(key, None)           # re-render just this keyframe
                 continue                      # same prompt, new seeds
             elif action == "pick" and Path(val).exists():
                 src = Path(val)
@@ -247,6 +286,7 @@ def run(ctx, feedback=None, items=None):
                 p.event("images", "agent_feedback", f"{key}: {val}")
                 sh[field] = rewrite(ctx, sh[field], val)
                 p.write_json("3_script.json", script)
+                pool.pop(key, None)           # options were for the old prompt
                 continue
             elif action == "quit":
                 raise SystemExit("Saved. Resume later.")
@@ -257,6 +297,7 @@ def run(ctx, feedback=None, items=None):
             shutil.copy(src, dest)
             done[key] = str(dest)
             used[key] = signature(ctx, sh, field)
+            pool.pop(key, None)               # chosen; free the list
             p.save()
             break
 
