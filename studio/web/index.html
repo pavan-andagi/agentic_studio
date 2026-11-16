@@ -93,6 +93,15 @@ svg{width:100%;height:auto;display:block}
 .bubw:hover .cardln{stroke:#9a978e}
 .bubw.on .cardln{stroke:#ffffff;stroke-width:2}
 .bubw.on{filter:drop-shadow(0 0 14px rgba(190,215,255,.45))}
+/* Pick button, right under the option you opened */
+.pickp{cursor:pointer}
+.pickp rect{fill:var(--okbg);stroke:var(--ok);stroke-width:1.4}
+.pickp text{font:600 12px system-ui,sans-serif;fill:var(--okt)}
+.pickp:hover rect{fill:var(--ok)}
+.pickp:hover text{fill:#07140f}
+.pickp.off{cursor:default}
+.pickp.off rect{fill:#1d1c1a;stroke:#4a4844}
+.pickp.off text{fill:#7d7b73}
 .bubn{font:600 11px system-ui,sans-serif;fill:#1b1a18}
 .bubl{font:600 11.5px system-ui,sans-serif;fill:#b4b1a8}
 .bubw.on .bubl{fill:var(--tx)}
@@ -217,9 +226,9 @@ button.mic:disabled,button.spk:disabled{opacity:.45;cursor:default}
 .vstat{font-size:12px;color:var(--amt)}.vopt{font-size:12px;color:var(--mut);display:flex;gap:5px;align-items:center}
 @keyframes blink{50%{opacity:.6}}
 </style></head><body>
-<header><h1>Agentic AI video studio</h1><select id="proj" title="Project"></select><span class="vsw"><button data-view="flow" id="vFlow" class="on">Flow</button><button data-view="comm" id="vComm">Communication</button></span><span id="chip" class="chip">loading…</span><span id="meta" style="color:var(--dim);font-size:12px"></span><label class="vopt" title="Read each new question aloud when it appears"><input type="checkbox" id="vAuto"> read new questions aloud</label></header>
+<header><h1>Agentic AI video studio</h1><select id="proj" title="Project"></select><span class="vsw"><button data-view="flow" id="vFlow" class="on">Flow</button><button data-view="comm" id="vComm">Communication</button></span><span id="chip" class="chip">loading…</span><span id="meta" style="color:var(--dim);font-size:12px"></span><label class="vopt" title="Chime and show a desktop notification when a stage needs you"><input type="checkbox" id="vAlert"> alert me when it needs me</label><label class="vopt" title="Read each new question aloud when it appears"><input type="checkbox" id="vAuto"> read new questions aloud</label></header>
 <main id="mainview">
- <section><div class="panel"><div id="flow"></div></div><div id="review"></div></section>
+ <section><div class="panel"><div id="flow"></div></div></section>
  <section class="panel"><div id="head"></div><div id="tabs" class="tabs"></div><div id="body"></div></section>
 </main>
 <div id="commview" style="display:none">
@@ -521,8 +530,16 @@ function bubbleBoard(d,items,pend){
        on=pick===i+1,cr=on?36:27,cid=open.key+':'+(i+1);
    str+='<path class="str kid" d="M'+pp.x+' '+(pp.y+open._r*0.55)+'Q'
       +((pp.x+q.x)/2)+' '+((pp.y+q.y)/2+26)+' '+q.x+' '+(q.y-cr*0.55)+'"/>';
+   // the chosen option gets its Pick button right underneath it, so the
+   // decision happens where you are looking
+   var ph=on?('<g class="pickp'+(pend===open.key?'':' off')+'"'
+     +(pend===open.key?' data-ans="'+(i+1)+'"':'')
+     +' transform="translate(0,'+(cr*1.26+16)+')">'
+     +'<rect x="-34" y="-12" width="68" height="24" rx="12"/>'
+     +'<text x="0" y="5" text-anchor="middle">'
+     +(pend===open.key?'Pick #'+(i+1):'not open')+'</text></g>'):'';
    bub+='<g transform="translate('+q.x.toFixed(1)+','+q.y.toFixed(1)+')">'
-    +oneBub(d,cid,f[i],cr,'',String(i+1),on?' on':'')+'</g>'}}
+    +oneBub(d,cid,f[i],cr,'',String(i+1),on?' on':'')+ph+'</g>'}}
  var card='';
  if(open&&bubPick&&bubPick.key===open.key){
   var fl=open.files[bubPick.n-1],canPick=pend===open.key;
@@ -647,7 +664,8 @@ function renderFlow(d,sel){
 function renderHead(d,sel){var s=ST.filter(function(x){return x.id===sel})[0]||ST[0],st=stageStatus(d,s.id);
  var lab={done:'Approved',active:'Working',review:'Waiting for your review',pending:'Not reached yet'}[st];
  return'<h2>'+esc(s.n)+' <span class="pill">'+lab+'</span></h2><div class="m">'+esc(s.desc)+'</div>'}
-function renderTabs(tab){return[['output','Output'],['master','Master decision'],['feedback','Feedback'],['timeline','Timeline'],['console','Console']].map(function(t){return'<button data-tab="'+t[0]+'" class="'+(tab===t[0]?'on':'')+'">'+t[1]+'</button>'}).join('')+'<button data-follow="1" title="Follow the live stage">Follow live</button>'}
+function renderTabs(tab){var wait=data&&data.pending;
+ return[['review',(wait?'\u25CF ':'')+'Review'],['output','Output'],['master','Master decision'],['feedback','Feedback'],['timeline','Timeline'],['console','Console']].map(function(t){return'<button data-tab="'+t[0]+'" class="'+(tab===t[0]?'on':'')+'">'+t[1]+'</button>'}).join('')+'<button data-follow="1" title="Follow the live stage">Follow live</button>'}
 function previewHtml(d,rel){if(!rel)return'';var u=fileUrl(d.name,rel),x=rel.toLowerCase();
  if(/\.(png|jpg|jpeg|webp)$/.test(x))return'<a href="'+u+'" target="_blank"><img class="pv" src="'+u+'"></a>';
  if(/\.(mp4|webm|mov)$/.test(x))return'<video class="pv" controls preload="metadata" src="'+u+'"></video>';return''}
@@ -658,15 +676,18 @@ function renderReview(d){var p=d.pending,h=headline(d);
   return'<div class="card"><div class="ct">'+esc(h.t)+'</div>'+extra+'</div>'}
  var o=p.options||'',m=o.match(/1-(\d+)/),n=m?+m[1]:0,retake=/\[t\]|\bt for\b|\bt = /.test(o),skip=/\bs = /.test(o),btn=[];
  if(p.kind!=='text'&&n===0)btn.push('<button class="ok" data-ans="a">Approve</button>');
- // numbered picking happens on the bubbles in the Output panel, where you
- // can see each option full size before choosing it
+ // Cast and Images put their options on the bubble board, where you can
+ // see each one full size. Every other stage still picks from here.
+ var kk=pendKey(d),onBoard=!!(kk&&(d.candidates||{})[kk]||[]).length;
+ if(!onBoard)for(var i=1;i<=n;i++)
+  btn.push('<button class="ok" data-ans="'+i+'">Pick #'+i+'</button>');
  if(retake)btn.push('<button data-ans="t">New options / retake (t)</button>');
  if(skip)btn.push('<button data-ans="s">Skip this layer (s)</button>');
  if(/\bx = /.test(o))btn.push('<button data-ans="x">Redo this stage with my feedback (x)</button>');
  var label=p.kind==='text'?'Send':(p.kind==='gate'?'Send as feedback (rewrite)':'Send feedback');
  return'<div class="card amber"><div class="ct">Waiting for you: '+esc(p.title)+'</div><div class="sum">'+esc(p.summary)+'</div>'+previewHtml(d,p.artifact)+
-  (n?'<div class="hint">To choose, open a bubble in the Output panel and '
-    +'use Pick this one. '+n+' options are waiting.</div>':'')+
+  (n&&onBoard?'<div class="hint">To choose, open one in the Output panel '
+    +'and use Pick this one. '+n+' options are waiting.</div>':'')+
   '<div class="quick">'+btn.join('')+'</div><textarea id="ans" placeholder="Type your feedback here (or a file path for your own image or clip)"></textarea>'+
   '<div class="row2"><button class="go" data-send="feedback">'+label+'</button>'+(p.kind==='text'?'':'<button data-send="raw">Send exactly as typed</button>')+'</div>'+voiceBar()+'<div class="hint">'+esc(o)+'</div></div>'}
 function empty(t){return'<div class="empty">'+esc(t)+'</div>'}
@@ -742,7 +763,10 @@ function renderFeedback(d,id){var l=(d.state.feedback_log||[]).filter(function(e
 function renderTimeline(d){var ev=d.events.slice().reverse();if(!ev.length)return empty('No events yet.');
  return ev.map(function(e){return'<div class="ev"><span class="m">'+clock(e.time)+'</span><span class="tag '+esc(e.kind)+'">'+esc(e.kind.replace('_',' '))+'</span><span><b>'+esc(e.stage||'')+'</b> '+esc(cut(e.text,300))+(e.frm?' <span class="m">(sent back from '+esc(e.frm)+')</span>':'')+'</span></div>'}).join('')}
 function renderConsole(d){return'<div class="con" id="con">'+esc((d.console||[]).join('\n'))+'</div>'}
-function renderTab(d,sel,tab){return({output:renderOutput,master:renderMaster,feedback:renderFeedback})[tab]?({output:renderOutput,master:renderMaster,feedback:renderFeedback})[tab](d,sel):(tab==='timeline'?renderTimeline(d):renderConsole(d))}
+function renderTab(d,sel,tab){
+ if(tab==='review')return sentMsg?('<div class="card"><div class="ct">'+esc(sentMsg)+'</div></div>'):renderReview(d);
+ var M={output:renderOutput,master:renderMaster,feedback:renderFeedback};
+ return M[tab]?M[tab](d,sel):(tab==='timeline'?renderTimeline(d):renderConsole(d))}
 /* ---------------- communication view ---------------- */
 var LANES=[{id:'you',n:'You',r:'review'},{id:'orch',n:'Orchestrator',r:'coordinator'},{id:'trend',n:'Trend',r:'agent 1'},{id:'plan',n:'Planner',r:'agent 2'},{id:'script',n:'Script',r:'agent 3'},{id:'cast',n:'Cast',r:'agent 4'},{id:'images',n:'Images',r:'agent 5'},{id:'clips',n:'Clips',r:'agent 6'},{id:'audio',n:'Audio',r:'agent 7'},{id:'master',n:'Master',r:'showrunner'},{id:'claude',n:'Claude API',r:'LLM'},{id:'comfy',n:'ComfyUI',r:'GPU'}];
 var LCOL={you:'#1D9E75',orch:'#888780',trend:'#7F77DD',plan:'#7F77DD',script:'#7F77DD',cast:'#7F77DD',images:'#7F77DD',clips:'#7F77DD',audio:'#7F77DD',master:'#D85A30',claude:'#378ADD',comfy:'#639922'};
@@ -864,12 +888,57 @@ function speak(text){if(!text)return;if(V.audio){V.audio.pause();V.audio=null}if
  fetch(q('/api/speak'),{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({text:text})}).then(function(r){if(!r.ok)throw 0;return r.blob()})
   .then(function(b){vstat('');var a=new Audio(URL.createObjectURL(b));V.audio=a;a.play().catch(function(){vstat('Click Listen to play (the browser blocked autoplay).')})}).catch(function(){vstat('');fallback()})}
 function autoRead(d){var a=document.getElementById('vAuto');if(!a||!a.checked||!d.pending)return;if(V.lastRead===d.pending.id)return;V.lastRead=d.pending.id;speak(pendingText(d.pending))}
+
+/* ---------------- "it needs you" alert ----------------
+   A long run is unattended by design, so when a gate opens the page has
+   to reach you in whatever window you are actually looking at. */
+var AL={seen:null,ctx:null,want:false};
+
+function chime(){                      // two soft notes, no audio file
+ try{
+  AL.ctx=AL.ctx||new (window.AudioContext||window.webkitAudioContext)();
+  if(AL.ctx.state==='suspended')AL.ctx.resume();
+  [[880,0],[1174.7,.16]].forEach(function(n){
+   var o=AL.ctx.createOscillator(),g=AL.ctx.createGain(),t=AL.ctx.currentTime+n[1];
+   o.type='sine';o.frequency.value=n[0];
+   g.gain.setValueAtTime(0,t);
+   g.gain.linearRampToValueAtTime(.16,t+.02);
+   g.gain.exponentialRampToValueAtTime(.0008,t+.5);
+   o.connect(g);g.connect(AL.ctx.destination);o.start(t);o.stop(t+.55)})
+ }catch(e){}}
+
+function alertPending(d){
+ var p=d.pending,base='Agentic AI video studio';
+ // the tab title is the one signal that works with the window minimised
+ document.title=p?('● Waiting for you — '+p.title):base;
+ if(!p){AL.seen=null;return}
+ if(AL.seen===p.id)return;            // same question, do not nag
+ AL.seen=p.id;
+ sentMsg=null;
+ if(tabManual!==p.id){tab='review';render()}   // bring it to you
+ if(!AL.want)return;                  // alerts are off
+ chime();
+ try{
+  if(window.Notification&&Notification.permission==='granted'){
+   var n=new Notification('Waiting for you: '+p.title,
+     {body:(p.summary||'').slice(0,160),tag:'studio-gate',renotify:true});
+   n.onclick=function(){window.focus();n.close()}}
+ }catch(e){}}
+
+function toggleAlerts(on){
+ AL.want=on;
+ try{localStorage.setItem('studioAlerts',on?'1':'0')}catch(e){}
+ if(on){
+  chime();                            // also unlocks audio for later
+  if(window.Notification&&Notification.permission==='default')
+   Notification.requestPermission()}}
 /* ---------------- page wiring ---------------- */
-var data=null,proj=null,sel=null,tab='output',el={},
+var data=null,proj=null,sel=null,tab='review',el={},
     lastDefault=null,projManual=false;
 function curStage(){if(sel)return sel;var c=(data.state.current||{}).stage;if(c)return c;var ap=data.state.approved||{};for(var i=0;i<ST.length;i++)if(ST[i].id!=='final'&&!ap[ST[i].id])return ST[i].id;return'final'}
 function setHTML(e,h){if(e&&e._h!==h){e.innerHTML=h;e._h=h}}
-var view='flow',selMsg=null,bubPick=null,bubOpen=null,bubFor=null;
+var view='flow',selMsg=null,bubPick=null,bubOpen=null,bubFor=null,
+    sentMsg=null,tabManual=null;
 function renderComm(){var msgs=commMsgs(data,comm);
  setHTML(el.cstats,(data.pending?'<div class="card amber" style="grid-column:1/-1;margin:0"><b>Waiting for you: '+esc(data.pending.title)+'</b> <button data-view="flow" style="margin-left:10px">Answer in the Flow view</button></div>':'')+renderCommStats(data));setHTML(el.chead,renderCommHead(data));
  var sc=el.cscroll,stick=commStick||sc.scrollHeight-sc.scrollTop-sc.clientHeight<60;
@@ -882,7 +951,7 @@ function render(){if(!data)return;var s=curStage(),h=headline(data),c=data.state
  el.chip.className='chip '+h.k;el.chip.textContent=h.t+(c.time&&h.k==='active'?'  ('+ago(data.now-c.time)+')':'');
  el.meta.textContent=data.run.alive?'studio running (pid '+data.run.pid+')':'';
  if(view==='comm'){renderComm();return}
- setHTML(el.flow,renderFlow(data,s));setHTML(el.review,renderReview(data));setHTML(el.head,renderHead(data,s));setHTML(el.tabs,renderTabs(tab));
+ setHTML(el.flow,renderFlow(data,s));setHTML(el.head,renderHead(data,s));setHTML(el.tabs,renderTabs(tab));
  var con=document.getElementById('con'),stick=con&&(con.scrollHeight-con.scrollTop-con.clientHeight<40);
  setHTML(el.body,renderTab(data,s,tab));
  if(tab==='console'){var c2=document.getElementById('con');if(c2&&(stick||con==null))c2.scrollTop=c2.scrollHeight}
@@ -893,17 +962,13 @@ function render(){if(!data)return;var s=curStage(),h=headline(data),c=data.state
 function offline(){
  el.chip.className='chip stopped';
  el.chip.textContent='Studio process has stopped';
+ document.title='Agentic AI video studio';
  if(data&&data.pending){
   data=JSON.parse(JSON.stringify(data));data.pending=null;
-  if(data.state&&data.state.current)data.state.current={status:'stopped'};
-  el.review._h=null;render()}
- setHTML(el.review,'<div class="card"><div class="ct">Studio process has '
-  +'stopped</div><div class="m">Nothing is listening for an answer. If the '
-  +'run reached DONE, the video is in the project’s final/ folder. To '
-  +'pick up where it left off:<br><code>python -m studio.main resume '
-  +esc(proj||'&lt;project&gt;')+'</code></div></div>')}
-function load(){if(!proj)return;fetch(q('/api/project?name='+encodeURIComponent(proj))).then(function(r){return r.json()}).then(function(d){if(d.error)throw 0;data=d;render();autoRead(d)}).catch(offline)}
-function send(text){var p=data&&data.pending;if(!p)return;fetch(q('/api/answer'),{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({project:proj,id:p.id,text:text})}).catch(function(){offline();throw 0}).then(function(r){if(!r.ok){alert('That question was already answered or closed - reloading.');load();return}else{el.review.innerHTML='<div class="card"><div class="ct">Sent: waiting for the studio…</div></div>';el.review._h=null;setTimeout(load,700)}})}
+  if(data.state&&data.state.current)data.state.current={status:'stopped'}}
+ sentMsg=null;tab='review';render()}
+function load(){if(!proj)return;fetch(q('/api/project?name='+encodeURIComponent(proj))).then(function(r){return r.json()}).then(function(d){if(d.error)throw 0;data=d;render();alertPending(d);autoRead(d)}).catch(offline)}
+function send(text){var p=data&&data.pending;if(!p)return;fetch(q('/api/answer'),{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({project:proj,id:p.id,text:text})}).catch(function(){offline();throw 0}).then(function(r){if(!r.ok){alert('That question was already answered or closed - reloading.');load();return}else{sentMsg='Sent: waiting for the studio…';tab='review';render();setTimeout(load,700)}})}
 function onClick(e){var t=e.target.closest('[data-bub],[data-mic],[data-speak],[data-autosend],[data-ans],[data-send],[data-tab],[data-follow],[data-allfb],[data-stage],[data-view],[data-msg]');if(!t)return;
  if(t.dataset.bub!==undefined){var b=String(t.dataset.bub).split(':');
   if(b.length===1){                       // a subject: open or close it
@@ -922,9 +987,12 @@ function onClick(e){var t=e.target.closest('[data-bub],[data-mic],[data-speak],[
   send(t.dataset.send==='raw'||p.kind==='text'||p.kind==='review'?v:'r '+v);return}
  if(t.dataset.follow){sel=null;render();return}
  if(t.dataset.allfb!==undefined){allFb=t.checked;render();return}
- if(t.dataset.tab){tab=t.dataset.tab;if(t.dataset.stage&&t.dataset.stage!==''&&t.tagName!=='BUTTON')sel=t.dataset.stage;render();return}
+ if(t.dataset.tab){tab=t.dataset.tab;sentMsg=null;
+  // remember you chose, so a still-open question stops yanking you back
+  tabManual=(data&&data.pending)?data.pending.id:null;
+  if(t.dataset.stage&&t.dataset.stage!==''&&t.tagName!=='BUTTON')sel=t.dataset.stage;render();return}
  if(t.dataset.stage){sel=t.dataset.stage;tab='output';render()}}
-function init(){initVoice();['flow','review','head','tabs','body','chip','meta','proj','mainview','commview','vFlow','vComm','cstats','chead','cscroll','cbody','cdetail','cinfo','fLlm','fComfy','fLane','fAll'].forEach(function(i){el[i]=document.getElementById(i)});
+function init(){initVoice();['flow','head','tabs','body','chip','meta','proj','mainview','commview','vFlow','vComm','cstats','chead','cscroll','cbody','cdetail','cinfo','fLlm','fComfy','fLane','fAll'].forEach(function(i){el[i]=document.getElementById(i)});
  document.addEventListener('click',onClick);
  el.fLane.innerHTML='<option value="all">everyone</option>'+LANES.map(function(l){return'<option value="'+l.id+'">'+esc(l.n)+'</option>'}).join('');
  el.fLlm.onchange=function(){comm.llm=el.fLlm.checked;commStick=true;render()};el.fComfy.onchange=function(){comm.comfy=el.fComfy.checked;commStick=true;render()};
@@ -942,6 +1010,10 @@ function init(){initVoice();['flow','review','head','tabs','body','chip','meta',
   load()})};
  el.proj.onchange=function(){projManual=true;proj=el.proj.value;sel=null;
   bubOpen=null;bubPick=null;load()};
+ var al=document.getElementById('vAlert');
+ if(al){try{al.checked=localStorage.getItem('studioAlerts')==='1'}catch(e){}
+  AL.want=al.checked;
+  al.onchange=function(){toggleAlerts(al.checked)}}
  pick();setInterval(load,2000);setInterval(pick,5000)}
 if(typeof document!=='undefined'&&document.getElementById('flow'))init();
 </script></body></html>
