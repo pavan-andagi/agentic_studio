@@ -500,6 +500,20 @@ function oneBub(d,id,file,r,label,badge,cls){
   +esc(cut(label,16))+'</text>';
  return o+'</g></g>'}
 
+/* Everything this stage is casting, so the whole set stays in view while
+   you answer about one of them. */
+function boardItems(d){
+ var st=(d.pending&&d.pending.stage)||'';
+ if(st==='cast'){
+  var c=d.cast||{};
+  return castSubjects(d).map(function(s){var ck=castKey(s.e.name);
+   return{key:ck,label:s.e.name,thumb:c[s.e.name]||null,
+          files:(d.candidates||{})[ck]||[]}})}
+ if(st==='images')
+  return needed(d).map(function(k){return{key:k.key,label:k.key,
+   thumb:d.keyframes[k.key]||null,files:(d.candidates||{})[k.key]||[]}});
+ return null}
+
 /* The options for the one question being asked, hanging straight from the
    knot - no parent bubble, because there is only one subject in view. */
 function optionBoard(d,key,files,canPick){
@@ -716,7 +730,13 @@ function renderReview(d){var p=d.pending,h=headline(d);
  var label=p.kind==='text'?'Send':(p.kind==='gate'?'Send as feedback (rewrite)':'Send feedback');
  // When there are options, the floating board goes here, in the tab you
  // are already in - not in Output, which you cannot see at the same time.
- var board=onBoard?optionBoard(d,kk,(d.candidates||{})[kk],true):'';
+ var board='';
+ if(onBoard){
+  var items=boardItems(d);
+  if(items&&items.length>1){
+   if(bubOpen!==kk)bubOpen=kk;     // the one being asked starts open
+   board=bubbleBoard(d,items,kk)}
+  else board=optionBoard(d,kk,(d.candidates||{})[kk],true)}
  return'<div class="card amber"><div class="ct">Waiting for you: '+esc(p.title)+'</div><div class="sum">'+esc(p.summary)+'</div>'+
   (board||previewHtml(d,p.artifact))+
   '<div class="quick">'+btn.join('')+'</div><textarea id="ans" placeholder="Type your feedback here (or a file path for your own image or clip)"></textarea>'+
