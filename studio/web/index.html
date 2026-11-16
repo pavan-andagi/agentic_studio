@@ -500,6 +500,35 @@ function oneBub(d,id,file,r,label,badge,cls){
   +esc(cut(label,16))+'</text>';
  return o+'</g></g>'}
 
+/* The options for the one question being asked, hanging straight from the
+   knot - no parent bubble, because there is only one subject in view. */
+function optionBoard(d,key,files,canPick){
+ if(!files||!files.length)return '';
+ var n=files.length,H=270,KY=H-20,str='',bub='',
+     sel=(bubPick&&bubPick.key===key)?bubPick.n:0,
+     spread=Math.min(SW-170,118*n);
+ for(var i=0;i<n;i++){
+  var q=rowPos(i,n,SW/2,112,spread),on=sel===i+1,r=on?46:38,cid=key+':'+(i+1);
+  str+='<path class="str" d="M60 '+KY+'Q'+((60+q.x)/2)+' '+(KY+12)+' '
+     +q.x+' '+(q.y+r*0.7)+'"/>';
+  var ph=on?('<g class="pickp'+(canPick?'':' off')+'"'
+    +(canPick?' data-ans="'+(i+1)+'"':'')
+    +' transform="translate(0,'+(r*1.26+18)+')">'
+    +'<rect x="-38" y="-13" width="76" height="26" rx="13"/>'
+    +'<text x="0" y="5" text-anchor="middle">'
+    +(canPick?'Pick #'+(i+1):'not open')+'</text></g>'):'';
+  bub+='<g transform="translate('+q.x.toFixed(1)+','+q.y.toFixed(1)+')">'
+   +oneBub(d,cid,files[i],r,'',String(i+1),on?' on':'')+ph+'</g>'}
+ var card=sel?('<div class="card" style="margin-top:0"><div class="ct">'
+   +'Option #'+sel+' of '+n+'</div><img class="pv" style="max-height:420px" src="'
+   +fileUrl(d.name,files[sel-1])+'"><div class="row" style="margin-top:8px">'
+   +(canPick?'<button class="ok" data-ans="'+sel+'">Pick this one (#'+sel+')</button>':'')
+   +'<a class="btn" href="'+fileUrl(d.name,files[sel-1])+'" target="_blank">Open full size</a>'
+   +'<button data-bub="'+key+':'+sel+'">Close</button></div></div>'):'';
+ return '<div class="tray"><svg viewBox="0 0 '+SW+' '+H+'" role="img">'
+  +str+'<circle class="knot" cx="60" cy="'+KY+'" r="4"/>'+bub+'</svg>'
+  +'<div class="m">'+n+' options &mdash; click one, then Pick</div>'+card+'</div>'}
+
 /* items: [{key,label,thumb,files}] - one entry per subject/keyframe */
 function bubbleBoard(d,items,pend){
  items=(items||[]).filter(function(x){return (x.files&&x.files.length)||x.thumb});
@@ -685,9 +714,11 @@ function renderReview(d){var p=d.pending,h=headline(d);
  if(skip)btn.push('<button data-ans="s">Skip this layer (s)</button>');
  if(/\bx = /.test(o))btn.push('<button data-ans="x">Redo this stage with my feedback (x)</button>');
  var label=p.kind==='text'?'Send':(p.kind==='gate'?'Send as feedback (rewrite)':'Send feedback');
- return'<div class="card amber"><div class="ct">Waiting for you: '+esc(p.title)+'</div><div class="sum">'+esc(p.summary)+'</div>'+previewHtml(d,p.artifact)+
-  (n&&onBoard?'<div class="hint">To choose, open one in the Output panel '
-    +'and use Pick this one. '+n+' options are waiting.</div>':'')+
+ // When there are options, the floating board goes here, in the tab you
+ // are already in - not in Output, which you cannot see at the same time.
+ var board=onBoard?optionBoard(d,kk,(d.candidates||{})[kk],true):'';
+ return'<div class="card amber"><div class="ct">Waiting for you: '+esc(p.title)+'</div><div class="sum">'+esc(p.summary)+'</div>'+
+  (board||previewHtml(d,p.artifact))+
   '<div class="quick">'+btn.join('')+'</div><textarea id="ans" placeholder="Type your feedback here (or a file path for your own image or clip)"></textarea>'+
   '<div class="row2"><button class="go" data-send="feedback">'+label+'</button>'+(p.kind==='text'?'':'<button data-send="raw">Send exactly as typed</button>')+'</div>'+voiceBar()+'<div class="hint">'+esc(o)+'</div></div>'}
 function empty(t){return'<div class="empty">'+esc(t)+'</div>'}
