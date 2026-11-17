@@ -9,7 +9,8 @@ import time
 import uuid
 from pathlib import Path
 
-STAGES = ["trend", "plan", "script", "cast", "images", "clips", "audio"]
+STAGES = ["trend", "plan", "script", "cast", "images", "clips",
+          "finish", "audio"]
 WEB = {"project": None}      # set when the dashboard is on
 ACTIVE = {"project": None}   # the project being run (for event hooks)
 
@@ -163,7 +164,8 @@ class Project:
                       if self.state_file.exists() else {})
         for k, v in (("approved", {}), ("inputs", {}), ("keyframes", {}),
                      ("clips", {}), ("feedback_log", []), ("pending", {}),
-                     ("guidance", {}), ("current", {}), ("run", {})):
+                     ("guidance", {}), ("current", {}), ("run", {}),
+                     ("finished", {}), ("finished_marks", {})):
             self.state.setdefault(k, v)
 
     # ---------- basics ----------
@@ -227,6 +229,11 @@ class Project:
             self.state["cast"] = {}             # and new characters
         if target == "audio":
             pass                                # sound only: keep the clips
+        elif target == "finish":
+            # The look is deterministic and costs no GPU: throw away the
+            # graded copies and keep every plate. This is the whole reason
+            # a re-grade is seconds rather than an hour.
+            self.state["finished_marks"].clear()
         elif target == "cast":
             # items = character names (empty = everyone): redo their
             # pictures and every keyframe/clip they appear in
@@ -262,9 +269,10 @@ class Project:
         clips = self.state["clips"]
         if shots is None:
             clips.clear()
+            self._drop_derived(None)
             return
         script = self.read_json("3_script.json", {"shots": []})["shots"]
-        dropping = False
+        dropping, gone = False, set()
         for s in script:                    # chained shots follow along
             if s["id"] in shots:
                 dropping = True
@@ -272,3 +280,19 @@ class Project:
                 dropping = False
             if dropping:
                 clips.pop(s["id"], None)
+                gone.add(s["id"])
+        self._drop_derived(gone)
+
+    def _drop_derived(self, shots):
+        """A plate that went away takes its graded copy with it. Nothing
+        here ever touches state["clips"]: the graded layer is cheap to
+        rebuild and the plate is not."""
+        for key in ("finished", "finished_marks"):
+            d = self.state.get(key)
+            if not isinstance(d, dict):
+                continue
+            if shots is None:
+                d.clear()
+            else:
+                for sid in shots:
+                    d.pop(sid, None)

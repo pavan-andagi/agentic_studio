@@ -43,7 +43,41 @@ cast:
   multipass: false             # true = old behaviour, extra passes for 4+
   turnaround: true              # character refs = front + back sheet
 
-# ---- Audio stage (6): voice-over, music, ambience, final mix ----
+# ---- Finish stage (7): the look, imposed after the clips are generated ----
+# Deterministic: no model, no GPU, re-runs in seconds. That is the point -
+# a look you can iterate on for free is a look you will actually iterate on.
+# It is also how several styles become reachable at all. Pixel art, Benday
+# halftone, risograph and VHS are not things to ask a diffusion model for;
+# it works in continuous space and smears every one of them. Generate a
+# clean plate in a style the model is good at, impose the look here.
+finish:
+  enabled: true
+  crf: 17                       # 17 is near-visually-lossless; 23 is smaller
+  filters:
+    - {name: grade, contrast: 1.08, saturation: 0.96, tint: [1.03, 1.0, 0.96]}
+
+  # Swap the list above for one of these and re-run the stage alone.
+  #
+  # pixel art  (generate flat illustration, NOT pixel art, then quantise)
+  #   - {name: quantise, colours: 24}
+  #   - {name: pixelate, block: 6}
+  #
+  # comic / Benday halftone
+  #   - {name: halftone, dot: 4, angle: 15}          # colour: true for CMY
+  #
+  # risograph print
+  #   - {name: riso, colours: 4, offset: 2, grain: 10}
+  #
+  # 1980s VHS
+  #   - {name: vhs, chroma: 3, scanline: 0.12, noise: 6}
+  #   - {name: grade, saturation: 1.1, contrast: 0.95}
+  #
+  # film-ish polish
+  #   - {name: grade, contrast: 1.1, saturation: 0.95}
+  #   - {name: bloom, threshold: 0.75, amount: 0.3}
+  #   - {name: grain, amount: 5}
+
+# ---- Audio stage (8): voice-over, music, ambience, final mix ----
 audio:
   enabled: true                   # false = no sound stage at all
   keep_clip_audio: false          # LTX's own clip sound (usually noise)

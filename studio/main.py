@@ -13,24 +13,32 @@ from pathlib import Path
 import yaml
 
 from . import dashboard
-from .agents import audio, cast, clips, images, master, planner, script, trend
+from .agents import (audio, cast, clips, finish, images, master, planner,
+                     script, trend)
 from .agents.base import Ctx
 from .approval import STAGES, Project, ask, banner, bind, enable_web, review_gate
 from .comfy import Comfy
 from .llm import LLM
 
 AGENTS = {"trend": trend, "plan": planner, "script": script,
-          "cast": cast, "images": images, "clips": clips, "audio": audio}
+          "cast": cast, "images": images, "clips": clips,
+          "finish": finish, "audio": audio}
 TITLES = {"trend": "1 Trend Identifier", "plan": "2 Project Planner",
           "script": "3 Script / Plot", "cast": "4 Cast",
           "images": "5 Image Creation", "clips": "6 Clips & Editing",
-          "audio": "7 Audio"}
+          "finish": "7 Finish (look)", "audio": "8 Audio"}
+
+# Deterministic stages. They cost no GPU and re-run in seconds, so they
+# show their result and move on instead of stopping to ask. A Master
+# rewind still lands here with feedback, and then they do ask.
+AUTO = {"finish"}
 
 
 READS = {"trend": "channel brief", "plan": "1_trend_chosen.json",
          "script": "2_plan.json", "cast": "2_plan.json (characters)",
          "images": "3_script.json (image prompts) + cast/",
          "clips": "3_script.json + keyframes",
+         "finish": "clips/ + the style filters in config.yaml",
          "audio": "3_script.json (narration) + final/ video"}
 
 
@@ -52,6 +60,13 @@ def run_stage(ctx, stage):
                 reads=READS[stage])
         result = AGENTS[stage].run(ctx, feedback, items)
         p.event(stage, "output", result.summary[:400])
+        if stage in AUTO and not feedback:
+            # Nothing to decide: the result is on the dashboard, and
+            # changing it is a config edit and a re-run, not an answer.
+            p.set_status(stage, "done", "deterministic - nothing to decide")
+            p.event(stage, "approved", "Auto-approved (deterministic stage)")
+            p.mark(stage)
+            return None
         p.set_status(stage, "waiting", "waiting for your review")
         action, text = review_gate(TITLES[stage], result.summary,
                                    result.artifact)
@@ -107,7 +122,7 @@ def run_stage(ctx, stage):
             return None
         target, its = d["target_stage"], d.get("affected_items") or []
         if target == stage:                       # fix it right here
-            if stage in ("images", "clips", "script"):
+            if stage in ("images", "clips", "script", "finish"):
                 p.rewind(stage, its)
             feedback, items = d["instructions"], its
             continue
