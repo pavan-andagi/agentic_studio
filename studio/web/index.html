@@ -273,7 +273,7 @@ function stageInfo(d,id){var f=d.files,sc=f.script;
  if(id==='images'){var n=needed(d);return n.length?Object.keys(d.keyframes).length+' of '+n.length+' keyframes picked':'Z-Image Turbo'}
  if(id==='clips')return sc&&sc.shots?Object.keys(d.clips).length+' of '+sc.shots.length+' clips approved':'LTX-2.5, 4K, assembly';
  if(id==='cast'){var cn=Object.keys(d.cast||{}),p=f.plan||{},pc=((p.characters||[]).length)+((p.locations||[]).length)+((p.props||[]).length);return pc?cn.length+' of '+pc+' references made':'One picture per character, place and prop'}
- if(id==='finish'){var fi=Object.keys((d.state.finished)||{}),fl=((d.cfg&&d.cfg.filters)||[]);
+ if(id==='finish'){var fi=Object.keys(d.finished||{});
   return fi.length?fi.length+' clips graded':'Filters, deterministic'}
  if(id==='audio'){var a=f.audio;return a?(a.layers.length?a.layers.join(', '):'no layers')+' mixed':'Voice, music, ambience'}
  return d.final.length?'Ready to watch':'Edit notes, captions'}
@@ -797,7 +797,7 @@ function outImages(d){var n=needed(d);if(!n.length)return empty('No keyframes ar
 function outClips(d){var s=d.files.script;if(!s)return empty('No shots yet.');
  return s.shots.map(function(x){var ap=d.clips[x.id],tk=(d.takes[x.id]||[]),rel=ap||tk[tk.length-1];
   return'<div class="item'+(ap?' chosen':'')+'"><b>'+esc(x.id)+'</b>'+pills([x.mode,x.duration+' s',ap?'approved':(rel?'draft take':'not generated')])+'<div class="m">'+esc(x.beat)+'</div>'+(rel?'<video class="pv" controls preload="metadata" src="'+fileUrl(d.name,rel)+'"></video>':'')+'</div>'}).join('')}
-function outFinish(d){var fin=(d.state.finished)||{},ks=Object.keys(fin).sort();
+function outFinish(d){var fin=d.finished||{},ks=Object.keys(fin).sort();
  if(!ks.length)return empty('Nothing graded yet. The Finish stage runs after the clips are approved.');
  return ks.map(function(k){return'<div class="item chosen"><b>'+esc(k)+'</b>'+pills(['graded'])+'<video class="pv" controls preload="metadata" src="'+fileUrl(d.name,fin[k])+'"></video><div class="m">'+esc(fin[k])+'</div></div>'}).join('')}
 function outFinal(d){var n=d.files.edit_notes,sc=d.files.script,h='';
@@ -1042,16 +1042,37 @@ function render(){if(!data)return;var s=curStage(),h=headline(data),c=data.state
 /* If the studio process has exited, its dashboard thread went with it.
    Say so and take the answer box away, rather than leaving a question on
    screen that nothing is listening to. */
-function offline(){
+var failN=0;
+function offline(hard){
+ // A single failed poll is not a stopped studio: the dashboard runs on
+ // a thread inside the busy process, so it drops requests while the GPU
+ // stages work. Only say 'stopped' after it keeps failing - and never
+ // touch the tab the person chose.
+ if(!hard&&++failN<3)return;
  el.chip.className='chip stopped';
  el.chip.textContent='Studio process has stopped';
  document.title='Agentic AI video studio';
  if(data&&data.pending){
   data=JSON.parse(JSON.stringify(data));data.pending=null;
   if(data.state&&data.state.current)data.state.current={status:'stopped'}}
- sentMsg=null;tab='review';render()}
-function load(){if(!proj)return;fetch(q('/api/project?name='+encodeURIComponent(proj))).then(function(r){return r.json()}).then(function(d){if(d.error)throw 0;data=d;render();alertPending(d);autoRead(d)}).catch(offline)}
-function send(text){var p=data&&data.pending;if(!p)return;fetch(q('/api/answer'),{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({project:proj,id:p.id,text:text})}).catch(function(){offline();throw 0}).then(function(r){if(!r.ok){alert('That question was already answered or closed - reloading.');load();return}else{sentMsg='Sent: waiting for the studio…';tab='review';render();setTimeout(load,700)}})}
+ sentMsg=null;render()}
+function load(){if(!proj)return;fetch(q('/api/project?name='+encodeURIComponent(proj))).then(function(r){return r.json()}).then(function(d){if(d.error)throw 0;failN=0;data=d;render();alertPending(d);autoRead(d)}).catch(offline)}
+function post(id,text){return fetch(q('/api/answer'),{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({project:proj,id:id,text:text})}).catch(function(){offline(true);throw 0}).then(function(r){if(!r.ok){alert('That question was already answered or closed - reloading.');load();return}sentMsg='Sent: waiting for the studio\u2026';render();setTimeout(load,700)})}
+/* The page can be holding a question the studio has already closed - a
+   retake reopens the same gate with a new id, and so does every stage
+   boundary. Answering with the stale id used to be dropped in silence, so
+   check what is actually open first, and never answer a question the
+   person has not seen. */
+function send(text){var p=data&&data.pending;if(!p)return;
+ fetch(q('/api/project?name='+encodeURIComponent(proj)))
+  .then(function(r){return r.json()})
+  .then(function(d){if(d.error)throw 0;failN=0;var cur=d&&d.pending;
+   if(!cur){data=d;sentMsg=null;render();
+    alert('That question has already closed - showing where the studio is now.');return}
+   if(cur.id!==p.id){data=d;sentMsg=null;render();alertPending(d);
+    alert('The studio has moved on to a new question. It is on screen now - please answer that one.');return}
+   return post(cur.id,text)})
+  .catch(function(){offline(true)})}
 function onClick(e){var t=e.target.closest('[data-bub],[data-mic],[data-speak],[data-autosend],[data-ans],[data-send],[data-tab],[data-follow],[data-allfb],[data-stage],[data-view],[data-msg]');if(!t)return;
  if(t.dataset.bub!==undefined){var b=String(t.dataset.bub).split(':');
   if(b.length===1){                       // a subject: open or close it

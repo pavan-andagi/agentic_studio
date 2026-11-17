@@ -22,7 +22,8 @@ from pathlib import Path
 from urllib.parse import parse_qs, unquote, urlparse
 
 WEB = Path(__file__).parent / "web"
-STAGES = ["trend", "plan", "script", "cast", "images", "clips", "audio"]
+STAGES = ["trend", "plan", "script", "cast", "images", "clips",
+          "finish", "audio"]
 IMG = {".png", ".jpg", ".jpeg", ".webp"}
 VID = {".mp4", ".webm", ".mov"}
 FILES = {"trends": "1_trends.json", "chosen": "1_trend_chosen.json",
@@ -108,6 +109,11 @@ def project_data(root, name):
             m = re.search(r"_(s\d+)_", f.name)
             if m and f.suffix.lower() in VID:
                 takes.setdefault(m.group(1), []).append(rel(f))
+    finished = {}
+    for sid, v in (st.get("finished") or {}).items():
+        r = rel(v)
+        if r and (d / r).exists():
+            finished[sid] = r
     clips = {}
     for sid, v in (st.get("clips") or {}).items():
         r = rel(v) or (f"clips/{Path(v).name}"
@@ -129,7 +135,8 @@ def project_data(root, name):
         "events": events, "pending": pend,
         "console": tail(d / "console.log", 200),
         "candidates": candidates, "keyframes": keyframes, "takes": takes,
-        "clips": clips, "sheets": images_in("sheets"),
+        "clips": clips, "finished": finished,
+        "sheets": images_in("sheets"),
         "cast": {n: rel(Path(f)) for n, f in (st.get("cast") or {}).items()
                  if f and Path(f).exists()},
         "final": sorted(rel(f) for f in (d / "final").glob("*")

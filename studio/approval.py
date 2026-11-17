@@ -67,6 +67,15 @@ def ask(title, summary, artifact=None, options="", kind="gate", prompt="> "):
                 (p.dir / "pending.json").unlink(missing_ok=True)
                 print(f"[dashboard] {r.get('text', '')!r}")
                 return str(r.get("text", "")).strip()
+            if r:
+                # An answer to a question that has already closed - a retake
+                # reopens the same gate with a new id, and so does every
+                # stage boundary. Dropping it in silence looks exactly like
+                # a dead button, so say so and clear it.
+                resp.unlink(missing_ok=True)
+                print(f"[dashboard] ignored {r.get('text', '')!r}: it "
+                      f"answered an earlier question. Answer the one shown "
+                      f"now (refresh the dashboard if it looks stale).")
         if terminal:
             try:
                 ready, _, _ = select.select([sys.stdin], [], [], 0.5)
