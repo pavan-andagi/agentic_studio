@@ -37,8 +37,11 @@ defaults:
 
 # ---- Cast stage (4): one reference picture per character ----
 cast:
-  enabled: true                   # false = keyframes from text only
-  options: 3                      # candidates per character
+  enabled: true
+  options: 3
+  max_refs_per_keyframe: 3     # 1-3
+  multipass: false             # true = old behaviour, extra passes for 4+
+  turnaround: true              # character refs = front + back sheet
 
 # ---- Audio stage (6): voice-over, music, ambience, final mix ----
 audio:
