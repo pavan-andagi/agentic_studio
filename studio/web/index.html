@@ -256,7 +256,8 @@ var ST=[
  {id:'cast',n:'4 Cast',s:'One picture per character, place and prop',desc:'Makes a reference picture of every character, location and prop; you pick the one used all video long.'},
  {id:'images',n:'5 Image creation',s:'Z-Image / Qwen Edit',desc:'Generates keyframes (with the cast pictures for shots with characters); you pick the best option for each.'},
  {id:'clips',n:'6 Clips and editing',s:'LTX-2.5, 4K, assembly',desc:'Animates the keyframes, checks the clips, joins the final video.'},
- {id:'audio',n:'7 Audio',s:'Voice, music, ambience',desc:'Narration (Kokoro), music (ACE-Step) and ambience (LTX audio), mixed under the video.'},
+ {id:'finish',n:'7 Finish (look)',s:'Filters, deterministic',desc:'Imposes the final look on the generated clips in code - pixel, halftone, riso, VHS, grade. No model, no GPU: re-runs in seconds.'},
+ {id:'audio',n:'8 Audio',s:'Voice, music, ambience',desc:'Narration (Kokoro), music (ACE-Step) and ambience (LTX audio), mixed under the video.'},
  {id:'final',n:'Final video',s:'Edit notes, captions',desc:'The assembled video, editing suggestions and captions.'}];
 function stageName(id){var s=ST.filter(function(x){return x.id===id})[0];return s?s.n:(id||'')}
 function needed(d){var sc=d.files.script,out=[];if(!sc||!sc.shots)return out;sc.shots.forEach(function(s){if(s.start_from==='new_keyframe'&&s.start_image_prompt)out.push({key:s.id+'_start',shot:s});if(s.mode==='flf2v'&&s.end_image_prompt)out.push({key:s.id+'_end',shot:s})});return out}
@@ -272,6 +273,8 @@ function stageInfo(d,id){var f=d.files,sc=f.script;
  if(id==='images'){var n=needed(d);return n.length?Object.keys(d.keyframes).length+' of '+n.length+' keyframes picked':'Z-Image Turbo'}
  if(id==='clips')return sc&&sc.shots?Object.keys(d.clips).length+' of '+sc.shots.length+' clips approved':'LTX-2.5, 4K, assembly';
  if(id==='cast'){var cn=Object.keys(d.cast||{}),p=f.plan||{},pc=((p.characters||[]).length)+((p.locations||[]).length)+((p.props||[]).length);return pc?cn.length+' of '+pc+' references made':'One picture per character, place and prop'}
+ if(id==='finish'){var fi=Object.keys((d.state.finished)||{}),fl=((d.cfg&&d.cfg.filters)||[]);
+  return fi.length?fi.length+' clips graded':'Filters, deterministic'}
  if(id==='audio'){var a=f.audio;return a?(a.layers.length?a.layers.join(', '):'no layers')+' mixed':'Voice, music, ambience'}
  return d.final.length?'Ready to watch':'Edit notes, captions'}
 function lastRewind(d){var r=d.events.filter(function(e){return e.kind==='rewind'}).pop();
@@ -669,7 +672,8 @@ function renderFlow(d,sel){
  // the command spine: every review joins it, it runs up to the showrunner
  out.push('<path class="spine" d="M612 '+(Y(NS-1)+H/2)+'V116H648"/>');
  var hand=['1_trend_chosen.json','2_plan.json','3_script.json','cast/',
-           'keyframes/','clips/ and final/','audio/ and final/'];
+           'keyframes/','clips/','finished/ and final/',
+           'audio/ and final/'];
  for(var i=0;i<NS;i++){
   var y=Y(i),ny=Y(i+1),mid=y+H/2,id=ST[i].id,st=stageStatus(d,id);
   // station -> inspector -> showrunner, then down to the next station
@@ -793,6 +797,9 @@ function outImages(d){var n=needed(d);if(!n.length)return empty('No keyframes ar
 function outClips(d){var s=d.files.script;if(!s)return empty('No shots yet.');
  return s.shots.map(function(x){var ap=d.clips[x.id],tk=(d.takes[x.id]||[]),rel=ap||tk[tk.length-1];
   return'<div class="item'+(ap?' chosen':'')+'"><b>'+esc(x.id)+'</b>'+pills([x.mode,x.duration+' s',ap?'approved':(rel?'draft take':'not generated')])+'<div class="m">'+esc(x.beat)+'</div>'+(rel?'<video class="pv" controls preload="metadata" src="'+fileUrl(d.name,rel)+'"></video>':'')+'</div>'}).join('')}
+function outFinish(d){var fin=(d.state.finished)||{},ks=Object.keys(fin).sort();
+ if(!ks.length)return empty('Nothing graded yet. The Finish stage runs after the clips are approved.');
+ return ks.map(function(k){return'<div class="item chosen"><b>'+esc(k)+'</b>'+pills(['graded'])+'<video class="pv" controls preload="metadata" src="'+fileUrl(d.name,fin[k])+'"></video><div class="m">'+esc(fin[k])+'</div></div>'}).join('')}
 function outFinal(d){var n=d.files.edit_notes,sc=d.files.script,h='';
  h+=d.final.length?d.final.map(function(f){return'<video class="pv" style="max-height:420px" controls preload="metadata" src="'+fileUrl(d.name,f)+'"></video>'}).join(''):empty('The final video is not ready yet.');
  if(n){h+='<h3>Editing suggestions</h3><table>'+(n.edits||[]).map(function(e){return'<tr><td><b>'+esc(e.shot)+'</b></td><td>'+esc(e.suggestion)+'</td></tr>'}).join('')+'</table><p class="m"><b>Music:</b> '+esc(n.music)+'<br><b>Grade:</b> '+esc(n.grade)+'<br><b>Cover frame:</b> '+esc(n.cover_frame)+'</p>'+((n.your_notes||[]).length?'<p class="m"><b>Your notes:</b> '+esc(n.your_notes.join('; '))+'</p>':'')}
@@ -826,7 +833,7 @@ function outCast(d){var subs=castSubjects(d),c=d.cast||{};
  return html}
 function castKey(name){return 'cast_'+String(name).toLowerCase()
  .replace(/[^a-z0-9]+/g,'_').replace(/^_|_$/g,'')}
-function renderOutput(d,id){return({trend:outTrend,plan:outPlan,script:outScript,cast:outCast,images:outImages,clips:outClips,audio:outAudio,final:outFinal}[id]||outTrend)(d)}
+function renderOutput(d,id){return({trend:outTrend,plan:outPlan,script:outScript,cast:outCast,images:outImages,clips:outClips,finish:outFinish,audio:outAudio,final:outFinal}[id]||outTrend)(d)}
 function renderMaster(d,id){var m=d.masters[id];if(id==='final')m=d.masters.audio;
  if(!m)return empty('No Master decision for this stage yet. The Master agent only acts when you give feedback at a review.');
  return'<div class="vbar" style="margin:0 0 8px"><button class="spk" data-speak="master" data-stage-id="'+esc(id)+'">🔊 Listen to this decision</button></div>'+renderMasterTable(m)}
@@ -844,8 +851,8 @@ function renderTab(d,sel,tab){
  var M={output:renderOutput,master:renderMaster,feedback:renderFeedback};
  return M[tab]?M[tab](d,sel):(tab==='timeline'?renderTimeline(d):renderConsole(d))}
 /* ---------------- communication view ---------------- */
-var LANES=[{id:'you',n:'You',r:'review'},{id:'orch',n:'Orchestrator',r:'coordinator'},{id:'trend',n:'Trend',r:'agent 1'},{id:'plan',n:'Planner',r:'agent 2'},{id:'script',n:'Script',r:'agent 3'},{id:'cast',n:'Cast',r:'agent 4'},{id:'images',n:'Images',r:'agent 5'},{id:'clips',n:'Clips',r:'agent 6'},{id:'audio',n:'Audio',r:'agent 7'},{id:'master',n:'Master',r:'showrunner'},{id:'claude',n:'Claude API',r:'LLM'},{id:'comfy',n:'ComfyUI',r:'GPU'}];
-var LCOL={you:'#1D9E75',orch:'#888780',trend:'#7F77DD',plan:'#7F77DD',script:'#7F77DD',cast:'#7F77DD',images:'#7F77DD',clips:'#7F77DD',audio:'#7F77DD',master:'#D85A30',claude:'#378ADD',comfy:'#639922'};
+var LANES=[{id:'you',n:'You',r:'review'},{id:'orch',n:'Orchestrator',r:'coordinator'},{id:'trend',n:'Trend',r:'agent 1'},{id:'plan',n:'Planner',r:'agent 2'},{id:'script',n:'Script',r:'agent 3'},{id:'cast',n:'Cast',r:'agent 4'},{id:'images',n:'Images',r:'agent 5'},{id:'clips',n:'Clips',r:'agent 6'},{id:'finish',n:'Finish',r:'agent 7'},{id:'audio',n:'Audio',r:'agent 8'},{id:'master',n:'Master',r:'showrunner'},{id:'claude',n:'Claude API',r:'LLM'},{id:'comfy',n:'ComfyUI',r:'GPU'}];
+var LCOL={you:'#1D9E75',orch:'#888780',trend:'#7F77DD',plan:'#7F77DD',script:'#7F77DD',cast:'#7F77DD',images:'#7F77DD',clips:'#7F77DD',finish:'#1D9E75',audio:'#7F77DD',master:'#D85A30',claude:'#378ADD',comfy:'#639922'};
 var CCOL={task:'#7F77DD',llm:'#378ADD',comfy:'#639922',out:'#AFA9EC',ok:'#1D9E75',you:'#EF9F27',master:'#D85A30',rewind:'#D85A30'};
 var CW=1340,RH=40,CTOP=8;
 var comm={llm:true,comfy:true,lane:'all',all:false,sel:null},commStick=true;
