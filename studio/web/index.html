@@ -936,7 +936,13 @@ function renderTimeline(d){var ev=d.events.slice().reverse();if(!ev.length)retur
  return ev.map(function(e){return'<div class="ev"><span class="m">'+clock(e.time)+'</span><span class="tag '+esc(e.kind)+'">'+esc(e.kind.replace('_',' '))+'</span><span><b>'+esc(e.stage||'')+'</b> '+esc(cut(e.text,300))+(e.frm?' <span class="m">(sent back from '+esc(e.frm)+')</span>':'')+'</span></div>'}).join('')}
 function renderConsole(d){return'<div class="con" id="con">'+esc((d.console||[]).join('\n'))+'</div>'}
 function renderTab(d,sel,tab){
- if(tab==='review')return sentMsg?('<div class="card"><div class="ct">'+esc(sentMsg)+'</div></div>'):renderReview(d);
+ // "Sent: waiting for the studio" is true for a moment and then it is
+ // not: once the studio is working again it has plainly taken the
+ // answer. Leaving it up replaced the whole Review tab - board, clip
+ // strip and all - for as long as the next clip took to generate.
+ if(sentMsg&&((d.state.current||{}).status||'')!=='waiting')sentMsg=null;
+ if(tab==='review')return sentMsg?('<div class="card"><div class="ct">'
+  +esc(sentMsg)+'</div></div>'+clipStrip(d)):renderReview(d);
  var M={output:renderOutput,master:renderMaster,feedback:renderFeedback};
  return M[tab]?M[tab](d,sel):(tab==='timeline'?renderTimeline(d):renderConsole(d))}
 /* ---------------- communication view ---------------- */
