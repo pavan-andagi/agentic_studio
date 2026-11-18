@@ -45,6 +45,19 @@ button{cursor:pointer}button:hover{border-color:var(--mut)}
 main{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:18px;padding:18px 20px;align-items:start}
 @media(max-width:1100px){main{grid-template-columns:1fr}}
 .panel{background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:14px}
+/* Everything this stage has finished so far, kept in view. A clip that
+   vanishes the moment you approve it makes the stage feel like it is
+   losing your work. Video cannot go on the SVG board - an SVG <image>
+   will not play - so the clips live in their own strip under it. */
+.strip{display:flex;gap:10px;overflow-x:auto;padding:10px 2px 4px;margin-top:12px}
+.stripc{flex:0 0 152px;background:var(--panel2);border:1px solid var(--line);border-radius:10px;padding:8px}
+.stripc.ok{border-color:var(--ok)}
+.stripc.now{border-color:var(--ag);box-shadow:0 0 0 1px var(--ag)}
+.striph{font-size:12px;color:var(--dim);margin-bottom:6px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.striph b{color:var(--mut)}
+.stripc.ok .striph b{color:var(--okt)}
+.stripc video{width:100%;border-radius:6px;display:block;background:#000}
+.stript{font-size:12px;color:var(--dim);margin-top:2px}
 svg{width:100%;height:auto;display:block}
 /* ---- flow: crew stations on a rack, one travelling signal ---- */
 .node{cursor:pointer}
@@ -637,6 +650,42 @@ function bubbleBoard(d,items,pend){
     +' &mdash; click one to open it, or click '+esc(open.label)+' again to close'
     :'Click a bubble to see its options')+'</div>'+card+'</div>'}
 
+/* Every option the Audio agent generated, not just the first one. The
+   gate offers Pick #1 and Pick #2, and until now only one preview was
+   ever shown - so you were choosing between things you could not
+   compare. The files are already on disk; this just renders them. */
+function audioOptions(d){
+ var p=d.pending;if(!p)return '';
+ var m=/^(music|ambience|voice)\b/i.exec(p.title||'');if(!m)return '';
+ var layer=m[1].toLowerCase(),tag='preview_'+layer+'_';
+ var fs=(d.previews||[]).filter(function(f){return f.indexOf(tag)>=0}).sort();
+ if(fs.length<2)return '';
+ return '<div class="stript">'+fs.length+' options - listen to each, then pick below.</div><div class="strip">'
+  +fs.map(function(f,i){return '<div class="stripc"><div class="striph"><b>#'+(i+1)+'</b></div><video controls preload="metadata" src="'
+   +fileUrl(d.name,f)+'"></video></div>'}).join('')+'</div>'}
+
+/* The clips made so far, approved or still a draft take. Shown through
+   the whole Clips stage so the set builds up in front of you, exactly
+   like the option board does for cast and images. */
+function clipStrip(d){
+ var cur=(d.state.current||{}).stage,pn=d.pending&&d.pending.stage;
+ if(cur!=='clips'&&pn!=='clips')return '';
+ var sc=d.files.script;if(!sc||!sc.shots)return '';
+ var now=(d.pending&&/Clip (s\d+)/.exec(d.pending.title||''))||[];
+ var rows=sc.shots.map(function(x){
+  var ap=d.clips[x.id],tk=(d.takes[x.id]||[]),rel=ap||tk[tk.length-1];
+  if(!rel)return '';
+  var k=ap?' ok':(now[1]===x.id?' now':'');
+  return '<div class="stripc'+k+'"><div class="striph"><b>'+esc(x.id)
+   +'</b> '+(ap?'approved':(tk.length>1?'take '+tk.length:'draft'))
+   +'</div><video controls preload="metadata" src="'
+   +fileUrl(d.name,rel)+'"></video></div>'}).filter(Boolean);
+ if(!rows.length)return '';
+ var done=Object.keys(d.clips||{}).length;
+ return '<div class="stript">'+done+' of '+sc.shots.length
+  +' clips approved - everything made so far stays here.</div>'
+  +'<div class="strip">'+rows.join('')+'</div>'}
+
 /* ---- the live board ------------------------------------------------
    While an agent is still generating, everything it has made so far stays
    on the board and the board grows as each option lands. Nothing is
@@ -778,7 +827,7 @@ function renderReview(d){var p=d.pending,h=headline(d);
  if(!p){var lb=liveBoard(d),extra=h.k==='stopped'?'<div class="hint">Resume it with:  python -m studio.main resume '+esc(d.name)+'</div>'
    :(lb?'<div class="hint">Everything this agent has made so far stays here. Picking opens once it has finished the whole set.</div>'
       :'<div class="hint">When a stage is ready, your review appears here. You can also answer in the terminal.</div>');
-  return'<div class="card"><div class="ct">'+esc(h.t)+'</div>'+lb+extra+'</div>'}
+  return'<div class="card"><div class="ct">'+esc(h.t)+'</div>'+lb+extra+'</div>'+clipStrip(d)}
  var o=p.options||'',m=o.match(/1-(\d+)/),n=m?+m[1]:0,retake=/\[t\]|\bt for\b|\bt = /.test(o),skip=/\bs = /.test(o),btn=[];
  if(p.kind!=='text'&&n===0)btn.push('<button class="ok" data-ans="a">Approve</button>');
  // Cast and Images put their options on the bubble board, where you can
@@ -802,7 +851,7 @@ function renderReview(d){var p=d.pending,h=headline(d);
  return'<div class="card amber"><div class="ct">Waiting for you: '+esc(p.title)+'</div><div class="sum">'+esc(p.summary)+'</div>'+
   (board||previewHtml(d,p.artifact))+
   '<div class="quick">'+btn.join('')+'</div><textarea id="ans" placeholder="Type your feedback here (or a file path for your own image or clip)"></textarea>'+
-  '<div class="row2"><button class="go" data-send="feedback">'+label+'</button>'+(p.kind==='text'?'':'<button data-send="raw">Send exactly as typed</button>')+'</div>'+voiceBar()+'<div class="hint">'+esc(o)+'</div></div>'}
+  '<div class="row2"><button class="go" data-send="feedback">'+label+'</button>'+(p.kind==='text'?'':'<button data-send="raw">Send exactly as typed</button>')+'</div>'+voiceBar()+'<div class="hint">'+esc(o)+'</div></div>'+audioOptions(d)+clipStrip(d)}
 function empty(t){return'<div class="empty">'+esc(t)+'</div>'}
 function pills(a){return a.filter(Boolean).map(function(x){return'<span class="pill">'+esc(x)+'</span>'}).join('')}
 function outTrend(d){var t=d.files.trends;if(!t)return empty('The trend agent has not produced ideas yet.');var ch=d.files.chosen&&d.files.chosen.title;

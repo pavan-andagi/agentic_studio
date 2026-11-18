@@ -192,7 +192,15 @@ audio:
   duck_music: true                # music gets quieter under the voice
   voiceover:
     enabled: true
-    voice: am_michael             # Kokoro voice id (bm_george = British)
+    # A Kokoro voice id, or "ask" to hear the candidates below reading
+    # this video's opening line and pick one at the gate.
+    voice: ask
+    voice_options:
+      - bm_fable                  # British male, storyteller, warm
+      - am_michael                # American male, professional, grounded
+      - af_river                  # American female, flowing, calm
+      - bf_emma                   # British female, sophisticated RP
+    # sample_text: null           # defaults to the first narration line
     speed: 1.0
     max_words_per_second: 2.5
     lead_in: 0.3                  # seconds after a shot starts

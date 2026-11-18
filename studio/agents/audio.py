@@ -87,10 +87,68 @@ def _pick_files(files):
 
 
 # ------------------------------------------------------------ layers
+def _cast_voice(ctx, script, acfg, st, adir):
+    """Hear the same line in every candidate voice, then pick one.
+
+    Typing a Kokoro id at the voice gate always worked, but it is choosing
+    blind - the only way to know how a voice carries this script is to
+    hear it reading this script. Set voiceover.voice: ask in config.yaml
+    to be offered the list in voiceover.voice_options."""
+    p, vc = ctx.project, acfg.get("voiceover", {})
+    options = vc.get("voice_options") or []
+    if st.get("voice") or vc.get("voice") != "ask" or not options:
+        return
+    lines = [t for t in narration(script).values() if t]
+    sample = (vc.get("sample_text") or (lines[0] if lines else
+              "This is how the narration for this video will sound."))
+    speed = st.get("speed") or vc.get("speed", 1.0)
+    while True:
+        print(f"\n[Audio agent] voice casting: {len(options)} voices "
+              f"reading the opening line ...")
+        p.set_status("audio", "working",
+                     f"speaking a sample in {len(options)} voices")
+        previews = []
+        for i, v in enumerate(options, 1):
+            f = tts.say(sample, adir / "voices" / v, v, speed,
+                        vc.get("lang"), vc.get("device", "cpu"))
+            # Mixed over the video so the dashboard can play it, and so you
+            # judge the voice against the pictures rather than in a vacuum.
+            previews.append(mix(st["video"],
+                                adir / f"preview_voice_{i}.mp4", voice=f))
+        open_file(previews[0])
+        listing = "\n".join(f"  #{i}: {v}  ({previews[i - 1]})"
+                             for i, v in enumerate(options, 1))
+        action, val = gate(
+            "Voice options",
+            f'Sample line: "{sample}"\nSpeed: {speed}\n\n{listing}',
+            previews[0],
+            f"Type 1-{len(options)} to pick, t = hear them again, "
+            f"or any other Kokoro voice id (e.g. bm_fable)")
+        if action == "pick" and val.isdigit() and 1 <= int(val) <= len(options):
+            st["voice"] = options[int(val) - 1]
+            p.save()
+            p.event("audio", "human_pick", f"voice: {st['voice']}")
+            return
+        if action == "pick" and val.lower() == "t":
+            continue
+        if action == "pick" and val.strip():
+            st["voice"] = val.strip()          # a voice id of your own
+            p.save()
+            p.event("audio", "human_pick", f"voice: {st['voice']}")
+            return
+        if action == "approve":                # Enter = the first one
+            st["voice"] = options[0]
+            p.save()
+            return
+        if action == "quit":
+            raise SystemExit("Saved. Resume later.")
+
+
 def _voice(ctx, script, times, total, acfg, st, adir, feedback=None):
     """Voice-over: speak each shot's line, place it at the shot's start."""
     p, vc = ctx.project, acfg.get("voiceover", {})
     wps = vc.get("max_words_per_second", 2.5)
+    _cast_voice(ctx, script, acfg, st, adir)
     while True:
         if st.get("voice_file"):                         # your own recording
             track = Path(st["voice_file"])
