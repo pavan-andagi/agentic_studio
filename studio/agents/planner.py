@@ -18,7 +18,16 @@ Do not list scenery or one-off background clutter. Each locked_description
 is one paragraph of concrete visual facts - for an object: shape, size,
 material, colour, finish, hardware, wear and markings; for a place:
 layout, architecture, materials, colours, vegetation and light. Write
-them so two different artists would draw the same thing."""
+them so two different artists would draw the same thing.
+
+The human's original brief is given to you as well. Where it states a
+length, a shot count or a shot length, those are requirements, not
+suggestions: set target_seconds, shot_count and clip_seconds to exactly
+what it asks for, even when the chosen trend would normally be told at a
+different length. Where it names the beats, use those beats and do not
+add, merge or drop any. If the brief asks for something you believe
+cannot be told in the length it gives, still plan it at that length and
+say so in risks, rather than quietly making the video longer."""
 
 FORMAT = """Return JSON:
 {"title": str, "logline": str, "audience": str,
@@ -47,7 +56,10 @@ def summarize(p):
     beats = "\n".join(f"  {i}. {b}" for i, b in enumerate(p["story_beats"], 1))
     plats = ", ".join(f"{x['name']} {x['aspect']} {x['target_seconds']}s"
                       for x in p["platforms"])
+    total = p['shot_count'] * p['clip_seconds']
     return (f"{p['title']}\n{p['logline']}\n\nPlatforms: {plats}\n"
+            f"Length: {p['shot_count']} shots x {p['clip_seconds']}s "
+            f"= about {total}s\n"
             f"Style: {p['style_line']}\nCharacters:\n{chars}\n"
             f"{_locked(p, 'locations')}{_locked(p, 'props')}Beats:\n{beats}"
             f"\nShots: {p['shot_count']} x {p['clip_seconds']}s | Audio: "
@@ -61,7 +73,13 @@ def run(ctx, feedback=None, items=None):
         data = p.read_json("2_plan.json")
     else:
         trend = p.read_json("1_trend_chosen.json")
-        prompt = (f"Chosen trend:\n{json.dumps(trend, indent=2)}\n\n"
+        # The brief reaches the Trend agent, which turns it into an idea.
+        # Without this line the Planner never sees what was actually asked
+        # for, so a brief that says "15 seconds, five shots" is planned at
+        # whatever length the trend suggests.
+        brief = (p.state.get("inputs") or {}).get("brief") or ""
+        prompt = (f"The human's original brief:\n{brief}\n\n"
+                  f"Chosen trend:\n{json.dumps(trend, indent=2)}\n\n"
                   f"Defaults: aspect {d['aspect']}, video {d['video_size']},"
                   f" {d['fps']} fps, max clip {d['max_clip_seconds']} s.\n\n"
                   f"{history(ctx, 'plan')}\n{rules(ctx.cfg)}\n{FORMAT}")

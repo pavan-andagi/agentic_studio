@@ -90,7 +90,14 @@ class Profile:
                     "image prompts. The final treatment is applied "
                     "afterwards in code, so the pictures you ask for are "
                     "the plate described above and nothing more.")
-        out.append(f"Keep every shot to {self.max_shot_s} seconds or less.")
+        out.append(
+            f"Keep every shot to {self.max_shot_s} seconds or less. "
+            "This is a limit on how long ONE shot may be, and it is "
+            "not a reason to add shots: use the shot count the plan "
+            "asks for. If the plan wants shots longer than this "
+            "limit, the video comes out shorter - never split a beat "
+            "into extra shots, and never invent beats to fill a "
+            "planned length.")
         m = self.forced_mode
         if m == "flf2v":
             out.append(
