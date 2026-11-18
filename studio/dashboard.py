@@ -23,7 +23,7 @@ from urllib.parse import parse_qs, unquote, urlparse
 
 WEB = Path(__file__).parent / "web"
 STAGES = ["trend", "plan", "script", "cast", "images", "clips",
-          "finish", "audio"]
+          "finish", "render", "audio"]
 IMG = {".png", ".jpg", ".jpeg", ".webp"}
 VID = {".mp4", ".webm", ".mov"}
 FILES = {"trends": "1_trends.json", "chosen": "1_trend_chosen.json",
@@ -114,6 +114,11 @@ def project_data(root, name):
         r = rel(v)
         if r and (d / r).exists():
             finished[sid] = r
+    composed = {}
+    for sid, v in (st.get("composed") or {}).items():
+        r = rel(v)
+        if r and (d / r).exists():
+            composed[sid] = r
     clips = {}
     for sid, v in (st.get("clips") or {}).items():
         r = rel(v) or (f"clips/{Path(v).name}"
@@ -135,7 +140,7 @@ def project_data(root, name):
         "events": events, "pending": pend,
         "console": tail(d / "console.log", 200),
         "candidates": candidates, "keyframes": keyframes, "takes": takes,
-        "clips": clips, "finished": finished,
+        "clips": clips, "finished": finished, "composed": composed,
         "sheets": images_in("sheets"),
         "cast": {n: rel(Path(f)) for n, f in (st.get("cast") or {}).items()
                  if f and Path(f).exists()},
@@ -204,7 +209,17 @@ class Handler(BaseHTTPRequestHandler):
         self.send_header("Accept-Ranges", "bytes")
         self.send_header("Content-Length", str(end - start + 1))
         self.send_header("Last-Modified", formatdate(st.st_mtime, usegmt=True))
-        self.send_header("Cache-Control", "no-cache")
+        # Candidates and takes carry a sequence number in the filename, so a
+        # given name never changes content: let the browser keep them. Every
+        # redraw of the option board recreates its <image> elements, and
+        # without this each one has to revalidate before it can paint, which
+        # is the black flash you see when picking an option. Keyframes,
+        # sheets and the final video are rewritten in place, so they stay on
+        # no-cache.
+        pstr = path.as_posix()
+        immutable = "/candidates/" in pstr or "/clips/takes/" in pstr
+        self.send_header("Cache-Control",
+                         "public, max-age=86400" if immutable else "no-cache")
         if code == 206:
             self.send_header("Content-Range", f"bytes {start}-{end}/{size}")
         self.end_headers()

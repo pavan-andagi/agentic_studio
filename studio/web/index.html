@@ -5,7 +5,36 @@
 <style>
 :root{--bg:#141413;--panel:#1c1b19;--panel2:#242320;--line:#3a3936;--tx:#ecebe4;--mut:#a3a199;--dim:#77756e;
 --ok:#1D9E75;--okbg:#10302A;--okt:#9FE1CB;--ag:#7F77DD;--agbg:#221F3A;--agt:#CECBF6;--am:#EF9F27;--ambg:#3A2A10;--amt:#FAC775;--mx:#D85A30;--mxbg:#3A1C10;--mxt:#F5C4B3}
-*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--tx);font:14px/1.5 system-ui,-apple-system,Segoe UI,Roboto,sans-serif}
+*{box-sizing:border-box}
+/* The base colour sits on <html> so the two backdrop layers below can
+   paint above it and still stay behind every panel. */
+html{background:var(--bg)}
+body{margin:0;background:transparent;color:var(--tx);font:14px/1.5 system-ui,-apple-system,Segoe UI,Roboto,sans-serif}
+/* ---- backdrop: three slow light pools and a little grain ------------
+   A control room that is watched for hours should stay dark and stay
+   still enough to read. The pools drift over minutes, not seconds, in
+   the colours the stages already use - violet for an agent at work,
+   amber for a question waiting, green for something approved - so the
+   room feels lit by the work rather than decorated. */
+body::before{content:'';position:fixed;inset:-25%;z-index:-2;pointer-events:none;
+ background:
+  radial-gradient(42vw 42vw at 18% 12%, rgba(127,119,221,.16), transparent 62%),
+  radial-gradient(38vw 38vw at 86% 30%, rgba(239,159,39,.10), transparent 60%),
+  radial-gradient(46vw 46vw at 62% 92%, rgba(29,158,117,.11), transparent 64%);
+ filter:blur(26px);animation:drift 96s ease-in-out infinite alternate}
+@keyframes drift{
+ 0%  {transform:translate3d(0,0,0) scale(1)}
+ 50% {transform:translate3d(2.5%,-2%,0) scale(1.07)}
+ 100%{transform:translate3d(-2%,2.5%,0) scale(1.03)}}
+/* Grain, at the threshold of visible. It stops the gradients banding on
+   a wide dark screen, which is the real job it is doing here. */
+body::after{content:'';position:fixed;inset:0;z-index:-1;pointer-events:none;opacity:.05;
+ background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='160'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.85' numOctaves='3'/%3E%3C/filter%3E%3Crect width='160' height='160' filter='url(%23n)'/%3E%3C/svg%3E");
+ animation:grain 1.1s steps(3) infinite}
+@keyframes grain{0%{transform:translate(0,0)}33%{transform:translate(-3px,2px)}66%{transform:translate(2px,-3px)}100%{transform:translate(0,0)}}
+@media (prefers-reduced-motion:reduce){
+ body::before,body::after{animation:none}}
+
 header{display:flex;gap:14px;align-items:center;padding:12px 20px;border-bottom:1px solid var(--line);flex-wrap:wrap}
 header h1{font-size:17px;margin:0;font-weight:600}
 select,button,textarea{font:inherit;color:var(--tx);background:var(--panel2);border:1px solid var(--line);border-radius:8px;padding:6px 10px}
@@ -257,7 +286,8 @@ var ST=[
  {id:'images',n:'5 Image creation',s:'Z-Image / Qwen Edit',desc:'Generates keyframes (with the cast pictures for shots with characters); you pick the best option for each.'},
  {id:'clips',n:'6 Clips and editing',s:'LTX-2.5, 4K, assembly',desc:'Animates the keyframes, checks the clips, joins the final video.'},
  {id:'finish',n:'7 Finish (look)',s:'Filters, deterministic',desc:'Imposes the final look on the generated clips in code - pixel, halftone, riso, VHS, grade. No model, no GPU: re-runs in seconds.'},
- {id:'audio',n:'8 Audio',s:'Voice, music, ambience',desc:'Narration (Kokoro), music (ACE-Step) and ambience (LTX audio), mixed under the video.'},
+ {id:'render',n:'8 Overlays',s:'Text drawn in code',desc:'Draws titles and captions in code and composites them over the graded clips. Never generated, so the type is always legible.'},
+ {id:'audio',n:'9 Audio',s:'Voice, music, ambience',desc:'Narration (Kokoro), music (ACE-Step) and ambience (LTX audio), mixed under the video.'},
  {id:'final',n:'Final video',s:'Edit notes, captions',desc:'The assembled video, editing suggestions and captions.'}];
 function stageName(id){var s=ST.filter(function(x){return x.id===id})[0];return s?s.n:(id||'')}
 function needed(d){var sc=d.files.script,out=[];if(!sc||!sc.shots)return out;sc.shots.forEach(function(s){if(s.start_from==='new_keyframe'&&s.start_image_prompt)out.push({key:s.id+'_start',shot:s});if(s.mode==='flf2v'&&s.end_image_prompt)out.push({key:s.id+'_end',shot:s})});return out}
@@ -275,6 +305,9 @@ function stageInfo(d,id){var f=d.files,sc=f.script;
  if(id==='cast'){var cn=Object.keys(d.cast||{}),p=f.plan||{},pc=((p.characters||[]).length)+((p.locations||[]).length)+((p.props||[]).length);return pc?cn.length+' of '+pc+' references made':'One picture per character, place and prop'}
  if(id==='finish'){var fi=Object.keys(d.finished||{});
   return fi.length?fi.length+' clips graded':'Filters, deterministic'}
+ if(id==='render'){var co=Object.keys(d.composed||{}),sc2=d.files.script,
+  ov=sc2&&sc2.shots?sc2.shots.reduce(function(a,x){return a+((x.overlays||[]).length)},0):0;
+  return co.length?co.length+' clips, '+ov+' overlays':'Text drawn in code'}
  if(id==='audio'){var a=f.audio;return a?(a.layers.length?a.layers.join(', '):'no layers')+' mixed':'Voice, music, ambience'}
  return d.final.length?'Ready to watch':'Edit notes, captions'}
 function lastRewind(d){var r=d.events.filter(function(e){return e.kind==='rewind'}).pop();
@@ -672,7 +705,7 @@ function renderFlow(d,sel){
  // the command spine: every review joins it, it runs up to the showrunner
  out.push('<path class="spine" d="M612 '+(Y(NS-1)+H/2)+'V116H648"/>');
  var hand=['1_trend_chosen.json','2_plan.json','3_script.json','cast/',
-           'keyframes/','clips/','finished/ and final/',
+           'keyframes/','clips/','finished/','composed/ and final/',
            'audio/ and final/'];
  for(var i=0;i<NS;i++){
   var y=Y(i),ny=Y(i+1),mid=y+H/2,id=ST[i].id,st=stageStatus(d,id);
@@ -800,6 +833,13 @@ function outClips(d){var s=d.files.script;if(!s)return empty('No shots yet.');
 function outFinish(d){var fin=d.finished||{},ks=Object.keys(fin).sort();
  if(!ks.length)return empty('Nothing graded yet. The Finish stage runs after the clips are approved.');
  return ks.map(function(k){return'<div class="item chosen"><b>'+esc(k)+'</b>'+pills(['graded'])+'<video class="pv" controls preload="metadata" src="'+fileUrl(d.name,fin[k])+'"></video><div class="m">'+esc(fin[k])+'</div></div>'}).join('')}
+function outRender(d){var cm=d.composed||{},ks=Object.keys(cm).sort(),sc=d.files.script;
+ if(!ks.length)return empty('Nothing composited yet. The Overlays stage runs after Finish.');
+ var by={};if(sc&&sc.shots)sc.shots.forEach(function(x){by[x.id]=x.overlays||[]});
+ return ks.map(function(k){var ov=by[k]||[];
+  return'<div class="item chosen"><b>'+esc(k)+'</b>'+pills([ov.length?ov.length+' overlay'+(ov.length>1?'s':''):'no overlay'])
+  +ov.map(function(o){return'<div class="m">'+esc(o.type||'caption')+' ['+(o.in||0)+'-'+(o.out||0)+'s] \u201c'+esc(o.text||'')+'\u201d</div>'}).join('')
+  +'<video class="pv" controls preload="metadata" src="'+fileUrl(d.name,cm[k])+'"></video></div>'}).join('')}
 function outFinal(d){var n=d.files.edit_notes,sc=d.files.script,h='';
  h+=d.final.length?d.final.map(function(f){return'<video class="pv" style="max-height:420px" controls preload="metadata" src="'+fileUrl(d.name,f)+'"></video>'}).join(''):empty('The final video is not ready yet.');
  if(n){h+='<h3>Editing suggestions</h3><table>'+(n.edits||[]).map(function(e){return'<tr><td><b>'+esc(e.shot)+'</b></td><td>'+esc(e.suggestion)+'</td></tr>'}).join('')+'</table><p class="m"><b>Music:</b> '+esc(n.music)+'<br><b>Grade:</b> '+esc(n.grade)+'<br><b>Cover frame:</b> '+esc(n.cover_frame)+'</p>'+((n.your_notes||[]).length?'<p class="m"><b>Your notes:</b> '+esc(n.your_notes.join('; '))+'</p>':'')}
@@ -833,7 +873,7 @@ function outCast(d){var subs=castSubjects(d),c=d.cast||{};
  return html}
 function castKey(name){return 'cast_'+String(name).toLowerCase()
  .replace(/[^a-z0-9]+/g,'_').replace(/^_|_$/g,'')}
-function renderOutput(d,id){return({trend:outTrend,plan:outPlan,script:outScript,cast:outCast,images:outImages,clips:outClips,finish:outFinish,audio:outAudio,final:outFinal}[id]||outTrend)(d)}
+function renderOutput(d,id){return({trend:outTrend,plan:outPlan,script:outScript,cast:outCast,images:outImages,clips:outClips,finish:outFinish,render:outRender,audio:outAudio,final:outFinal}[id]||outTrend)(d)}
 function renderMaster(d,id){var m=d.masters[id];if(id==='final')m=d.masters.audio;
  if(!m)return empty('No Master decision for this stage yet. The Master agent only acts when you give feedback at a review.');
  return'<div class="vbar" style="margin:0 0 8px"><button class="spk" data-speak="master" data-stage-id="'+esc(id)+'">🔊 Listen to this decision</button></div>'+renderMasterTable(m)}
@@ -851,8 +891,8 @@ function renderTab(d,sel,tab){
  var M={output:renderOutput,master:renderMaster,feedback:renderFeedback};
  return M[tab]?M[tab](d,sel):(tab==='timeline'?renderTimeline(d):renderConsole(d))}
 /* ---------------- communication view ---------------- */
-var LANES=[{id:'you',n:'You',r:'review'},{id:'orch',n:'Orchestrator',r:'coordinator'},{id:'trend',n:'Trend',r:'agent 1'},{id:'plan',n:'Planner',r:'agent 2'},{id:'script',n:'Script',r:'agent 3'},{id:'cast',n:'Cast',r:'agent 4'},{id:'images',n:'Images',r:'agent 5'},{id:'clips',n:'Clips',r:'agent 6'},{id:'finish',n:'Finish',r:'agent 7'},{id:'audio',n:'Audio',r:'agent 8'},{id:'master',n:'Master',r:'showrunner'},{id:'claude',n:'Claude API',r:'LLM'},{id:'comfy',n:'ComfyUI',r:'GPU'}];
-var LCOL={you:'#1D9E75',orch:'#888780',trend:'#7F77DD',plan:'#7F77DD',script:'#7F77DD',cast:'#7F77DD',images:'#7F77DD',clips:'#7F77DD',finish:'#1D9E75',audio:'#7F77DD',master:'#D85A30',claude:'#378ADD',comfy:'#639922'};
+var LANES=[{id:'you',n:'You',r:'review'},{id:'orch',n:'Orchestrator',r:'coordinator'},{id:'trend',n:'Trend',r:'agent 1'},{id:'plan',n:'Planner',r:'agent 2'},{id:'script',n:'Script',r:'agent 3'},{id:'cast',n:'Cast',r:'agent 4'},{id:'images',n:'Images',r:'agent 5'},{id:'clips',n:'Clips',r:'agent 6'},{id:'finish',n:'Finish',r:'agent 7'},{id:'render',n:'Overlays',r:'agent 8'},{id:'audio',n:'Audio',r:'agent 9'},{id:'master',n:'Master',r:'showrunner'},{id:'claude',n:'Claude API',r:'LLM'},{id:'comfy',n:'ComfyUI',r:'GPU'}];
+var LCOL={you:'#1D9E75',orch:'#888780',trend:'#7F77DD',plan:'#7F77DD',script:'#7F77DD',cast:'#7F77DD',images:'#7F77DD',clips:'#7F77DD',finish:'#1D9E75',render:'#1D9E75',audio:'#7F77DD',master:'#D85A30',claude:'#378ADD',comfy:'#639922'};
 var CCOL={task:'#7F77DD',llm:'#378ADD',comfy:'#639922',out:'#AFA9EC',ok:'#1D9E75',you:'#EF9F27',master:'#D85A30',rewind:'#D85A30'};
 var CW=1340,RH=40,CTOP=8;
 var comm={llm:true,comfy:true,lane:'all',all:false,sel:null},commStick=true;

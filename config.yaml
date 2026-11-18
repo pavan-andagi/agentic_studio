@@ -77,7 +77,20 @@ finish:
   #   - {name: bloom, threshold: 0.75, amount: 0.3}
   #   - {name: grain, amount: 5}
 
-# ---- Audio stage (8): voice-over, music, ambience, final mix ----
+# ---- Render stage (8): text and graphics, drawn in code ----
+# Overlays are composited over the finished clips, never generated. A
+# diffusion model garbles letters, and garbled text is the most visible
+# tell in an AI video - so the Script agent puts anything that must be
+# read into a shot's overlays list, and this stage draws it.
+# Runs after Finish, so the look is already on the plate and the type
+# stays crisp on top of it.
+render:
+  enabled: true
+  crf: 17
+  fade: 0.25                    # seconds, in and out of every overlay
+  # font: /usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf
+
+# ---- Audio stage (9): voice-over, music, ambience, final mix ----
 audio:
   enabled: true                   # false = no sound stage at all
   keep_clip_audio: false          # LTX's own clip sound (usually noise)

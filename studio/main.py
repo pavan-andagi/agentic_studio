@@ -14,7 +14,7 @@ import yaml
 
 from . import dashboard
 from .agents import (audio, cast, clips, finish, images, master, planner,
-                     script, trend)
+                     render, script, trend)
 from .agents.base import Ctx
 from .approval import STAGES, Project, ask, banner, bind, enable_web, review_gate
 from .comfy import Comfy
@@ -22,16 +22,17 @@ from .llm import LLM
 
 AGENTS = {"trend": trend, "plan": planner, "script": script,
           "cast": cast, "images": images, "clips": clips,
-          "finish": finish, "audio": audio}
+          "finish": finish, "render": render, "audio": audio}
 TITLES = {"trend": "1 Trend Identifier", "plan": "2 Project Planner",
           "script": "3 Script / Plot", "cast": "4 Cast",
           "images": "5 Image Creation", "clips": "6 Clips & Editing",
-          "finish": "7 Finish (look)", "audio": "8 Audio"}
+          "finish": "7 Finish (look)", "render": "8 Overlays",
+          "audio": "9 Audio"}
 
 # Deterministic stages. They cost no GPU and re-run in seconds, so they
 # show their result and move on instead of stopping to ask. A Master
 # rewind still lands here with feedback, and then they do ask.
-AUTO = {"finish"}
+AUTO = {"finish", "render"}
 
 
 READS = {"trend": "channel brief", "plan": "1_trend_chosen.json",
@@ -39,6 +40,7 @@ READS = {"trend": "channel brief", "plan": "1_trend_chosen.json",
          "images": "3_script.json (image prompts) + cast/",
          "clips": "3_script.json + keyframes",
          "finish": "clips/ + the style filters in config.yaml",
+         "render": "3_script.json (overlays) + finished clips",
          "audio": "3_script.json (narration) + final/ video"}
 
 
@@ -122,7 +124,7 @@ def run_stage(ctx, stage):
             return None
         target, its = d["target_stage"], d.get("affected_items") or []
         if target == stage:                       # fix it right here
-            if stage in ("images", "clips", "script", "finish"):
+            if stage in ("images", "clips", "script", "finish", "render"):
                 p.rewind(stage, its)
             feedback, items = d["instructions"], its
             continue

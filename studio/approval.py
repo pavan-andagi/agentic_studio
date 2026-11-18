@@ -10,7 +10,7 @@ import uuid
 from pathlib import Path
 
 STAGES = ["trend", "plan", "script", "cast", "images", "clips",
-          "finish", "audio"]
+          "finish", "render", "audio"]
 WEB = {"project": None}      # set when the dashboard is on
 ACTIVE = {"project": None}   # the project being run (for event hooks)
 
@@ -174,7 +174,8 @@ class Project:
         for k, v in (("approved", {}), ("inputs", {}), ("keyframes", {}),
                      ("clips", {}), ("feedback_log", []), ("pending", {}),
                      ("guidance", {}), ("current", {}), ("run", {}),
-                     ("finished", {}), ("finished_marks", {})):
+                     ("finished", {}), ("finished_marks", {}),
+                     ("composed", {}), ("composed_marks", {})):
             self.state.setdefault(k, v)
 
     # ---------- basics ----------
@@ -243,6 +244,10 @@ class Project:
             # graded copies and keep every plate. This is the whole reason
             # a re-grade is seconds rather than an hour.
             self.state["finished_marks"].clear()
+            self.state["composed_marks"].clear()
+        elif target == "render":
+            # Only the overlays are stale; the graded plates stand.
+            self.state["composed_marks"].clear()
         elif target == "cast":
             # items = character names (empty = everyone): redo their
             # pictures and every keyframe/clip they appear in
@@ -293,10 +298,11 @@ class Project:
         self._drop_derived(gone)
 
     def _drop_derived(self, shots):
-        """A plate that went away takes its graded copy with it. Nothing
-        here ever touches state["clips"]: the graded layer is cheap to
-        rebuild and the plate is not."""
-        for key in ("finished", "finished_marks"):
+        """A plate that went away takes its graded and composited copies
+        with it. Nothing here ever touches state["clips"]: those layers
+        are cheap to rebuild and the plate is not."""
+        for key in ("finished", "finished_marks",
+                    "composed", "composed_marks"):
             d = self.state.get(key)
             if not isinstance(d, dict):
                 continue
