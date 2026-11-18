@@ -654,9 +654,13 @@ function bubbleBoard(d,items,pend){
    gate offers Pick #1 and Pick #2, and until now only one preview was
    ever shown - so you were choosing between things you could not
    compare. The files are already on disk; this just renders them. */
-function audioOptions(d){
- var p=d.pending;if(!p)return '';
- var m=/^(music|ambience|voice)\b/i.exec(p.title||'');if(!m)return '';
+function audioOptions(d,n){
+ // Only on a gate that actually offers numbered picks. "Voice-over"
+ // is a different gate from "Voice options", and showing the casting
+ // previews under it gave four choices and no way to choose.
+ var p=d.pending;if(!p||!n||n<2)return '';
+ var m=/^(music|ambience|voice) options\b/i.exec(p.title||'');
+ if(!m)return '';
  var layer=m[1].toLowerCase(),tag='preview_'+layer+'_';
  var fs=(d.previews||[]).filter(function(f){return f.indexOf(tag)>=0}).sort();
  if(fs.length<2)return '';
@@ -851,7 +855,7 @@ function renderReview(d){var p=d.pending,h=headline(d);
  return'<div class="card amber"><div class="ct">Waiting for you: '+esc(p.title)+'</div><div class="sum">'+esc(p.summary)+'</div>'+
   (board||previewHtml(d,p.artifact))+
   '<div class="quick">'+btn.join('')+'</div><textarea id="ans" placeholder="Type your feedback here (or a file path for your own image or clip)"></textarea>'+
-  '<div class="row2"><button class="go" data-send="feedback">'+label+'</button>'+(p.kind==='text'?'':'<button data-send="raw">Send exactly as typed</button>')+'</div>'+voiceBar()+'<div class="hint">'+esc(o)+'</div></div>'+audioOptions(d)+clipStrip(d)}
+  '<div class="row2"><button class="go" data-send="feedback">'+label+'</button>'+(p.kind==='text'?'':'<button data-send="raw">Send exactly as typed</button>')+'</div>'+voiceBar()+'<div class="hint">'+esc(o)+'</div></div>'+audioOptions(d,n)+clipStrip(d)}
 function empty(t){return'<div class="empty">'+esc(t)+'</div>'}
 function pills(a){return a.filter(Boolean).map(function(x){return'<span class="pill">'+esc(x)+'</span>'}).join('')}
 function outTrend(d){var t=d.files.trends;if(!t)return empty('The trend agent has not produced ideas yet.');var ch=d.files.chosen&&d.files.chosen.title;
