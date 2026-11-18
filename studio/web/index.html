@@ -1105,7 +1105,7 @@ function toggleAlerts(on){
   if(window.Notification&&Notification.permission==='default')
    Notification.requestPermission()}}
 /* ---------------- page wiring ---------------- */
-var data=null,proj=null,sel=null,tab='review',el={},
+var data=null,lastSig=null,proj=null,sel=null,tab='review',el={},
     lastDefault=null,projManual=false;
 function curStage(){if(sel)return sel;var c=(data.state.current||{}).stage;if(c)return c;var ap=data.state.approved||{};for(var i=0;i<ST.length;i++)if(ST[i].id!=='final'&&!ap[ST[i].id])return ST[i].id;return'final'}
 function setHTML(e,h){if(e&&e._h!==h){e.innerHTML=h;e._h=h}}
@@ -1145,7 +1145,25 @@ function offline(hard){
   data=JSON.parse(JSON.stringify(data));data.pending=null;
   if(data.state&&data.state.current)data.state.current={status:'stopped'}}
  sentMsg=null;render()}
-function load(){if(!proj)return;fetch(q('/api/project?name='+encodeURIComponent(proj))).then(function(r){return r.json()}).then(function(d){if(d.error)throw 0;failN=0;data=d;render();alertPending(d);autoRead(d)}).catch(offline)}
+/* What the page actually draws from. The poll runs every two seconds,
+   and rebuilding the board on every one of them destroys and recreates
+   every <image> element - which is the flicker when you pick an option,
+   and a redraw under your cursor the rest of the time. So compare a
+   signature of everything the view depends on, and redraw only when one
+   of those actually moved. Clicks call render() directly, so the UI
+   still answers immediately. */
+function sigOf(d){var c=d.state.current||{},n=function(o){return o?Object.keys(o).length:0};
+ return [c.stage,c.status,c.detail,d.pending&&d.pending.id,
+  JSON.stringify(d.state.approved||{}),
+  n(d.keyframes),n(d.clips),n(d.finished),n(d.composed),n(d.cast),
+  (d.final||[]).length,(d.previews||[]).length,(d.sheets||[]).length,
+  (d.events||[]).length,(d.console||[]).length,
+  Object.keys(d.candidates||{}).sort().map(function(k){
+   return k+':'+(d.candidates[k]||[]).length}).join(','),
+  Object.keys(d.takes||{}).sort().map(function(k){
+   return k+':'+(d.takes[k]||[]).length}).join(',')
+ ].join('|')}
+function load(){if(!proj)return;fetch(q('/api/project?name='+encodeURIComponent(proj))).then(function(r){return r.json()}).then(function(d){if(d.error)throw 0;failN=0;var sg=sigOf(d),same=(sg===lastSig);data=d;lastSig=sg;if(!same)render();alertPending(d);autoRead(d)}).catch(offline)}
 function post(id,text){return fetch(q('/api/answer'),{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({project:proj,id:id,text:text})}).catch(function(){offline(true);throw 0}).then(function(r){if(!r.ok){alert('That question was already answered or closed - reloading.');load();return}sentMsg='Sent: waiting for the studio\u2026';render();setTimeout(load,700)})}
 /* The page can be holding a question the studio has already closed - a
    retake reopens the same gate with a new id, and so does every stage
@@ -1162,6 +1180,7 @@ function send(text){var p=data&&data.pending;if(!p)return;
     alert('The studio has moved on to a new question. It is on screen now - please answer that one.');return}
    return post(cur.id,text)})
   .catch(function(){offline(true)})}
+function redraw(){lastSig=null;render()}
 function onClick(e){var t=e.target.closest('[data-bub],[data-mic],[data-speak],[data-autosend],[data-ans],[data-send],[data-tab],[data-follow],[data-allfb],[data-stage],[data-view],[data-msg]');if(!t)return;
  if(t.dataset.bub!==undefined){var b=String(t.dataset.bub).split(':');
   if(b.length===1){                       // a subject: open or close it
@@ -1199,10 +1218,10 @@ function init(){initVoice();['flow','head','tabs','body','chip','meta','proj','m
   lastDefault=r.default;
   var want=urlWant||((moved&&!projManual)?r.default:(proj||r.default));
   if(want)el.proj.value=want;
-  if(el.proj.value!==proj){proj=el.proj.value;sel=null;bubOpen=null;bubPick=null;bubManual=false}
+  if(el.proj.value!==proj){proj=el.proj.value;sel=null;bubOpen=null;bubPick=null;bubManual=false;lastSig=null}
   load()})};
  el.proj.onchange=function(){projManual=true;proj=el.proj.value;sel=null;
-  bubOpen=null;bubPick=null;bubManual=false;load()};
+  bubOpen=null;bubPick=null;bubManual=false;lastSig=null;load()};
  var al=document.getElementById('vAlert');
  if(al){try{al.checked=localStorage.getItem('studioAlerts')==='1'}catch(e){}
   AL.want=al.checked;
