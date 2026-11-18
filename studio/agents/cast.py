@@ -9,6 +9,7 @@ import re
 import shutil
 from pathlib import Path
 
+from .. import style as _style
 from ..approval import gate, open_file
 from ..media import image_grid
 from .base import StageResult, history, rules
@@ -162,7 +163,11 @@ def run(ctx, feedback=None, items=None):
     w, h = cfg["defaults"]["image_size"]
     turn = ccfg.get("turnaround", False)
     n = ccfg.get("options", 3)
-    style = plan.get("style_line", "")
+    # For a filtered look the plate is deliberately generated in a
+    # different style from the finished video, so references follow the
+    # plate, not the final treatment.
+    prof = _style.load(cfg, p.state.get("style"))
+    style = prof.plate_line() or plan.get("style_line", "")
     out = p.dir / "cast"
     out.mkdir(exist_ok=True)
 

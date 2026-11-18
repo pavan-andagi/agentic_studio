@@ -53,10 +53,10 @@ cast:
 finish:
   enabled: true
   crf: 17                       # 17 is near-visually-lossless; 23 is smaller
-  filters:
-    - {name: grade, contrast: 1.08, saturation: 0.96, tint: [1.03, 1.0, 0.96]}
+  # filters:                    # uncomment to override the style profile
+  #   - {name: grade, contrast: 1.1, saturation: 0.95}
 
-  # Swap the list above for one of these and re-run the stage alone.
+  # Presets, for reference - these now live on the style profiles above.
   #
   # pixel art  (generate flat illustration, NOT pixel art, then quantise)
   #   - {name: quantise, colours: 24}
@@ -76,6 +76,99 @@ finish:
   #   - {name: grade, contrast: 1.1, saturation: 0.95}
   #   - {name: bloom, threshold: 0.75, amount: 0.3}
   #   - {name: grain, amount: 5}
+
+# ---- Style profiles ----
+# A style used to be a sentence handed to the image model, and nothing
+# after that point knew what the sentence implied. A profile carries the
+# three failure axes as data, so one edit here changes mode selection,
+# shot length, text routing and post-processing together.
+#
+#   reveal  does the style need content to accumulate over time? The model
+#           has no memory of what it already drew, so it morphs instead of
+#           adding. reveal >= 2 forces flf2v and injects start_hint.
+#   glyph   does it need readable letters or numbers? glyph >= 1 bans text
+#           from the plate and routes it to an overlay.
+#   lock    does it need frame-exact precision - a pixel grid, repeated
+#           linework, a face that stays the same face? lock >= 2 caps
+#           every shot at 3 seconds, because identity drift is a function
+#           of duration.
+#
+# Pick one with:  python -m studio.main new <name> --brief '...' --style cut_paper
+styles:
+  default: cut_paper
+
+  cut_paper:
+    line: "Layered cut-paper diorama animation. Landscapes built from torn
+           and cut coloured paper in distinct stacked layers, soft shadows
+           falling between the layers, visible paper grain and fibre edges.
+           Warm limited palette of ochre, terracotta, indigo, sage and
+           cream. Slow parallax camera moves."
+    axes: {reveal: 0, glyph: 0, lock: 0}
+    max_shot_s: 6
+    prefer_mode: i2v
+    filters:
+      - {name: grade, contrast: 1.08, saturation: 0.96, tint: [1.03, 1.0, 0.96]}
+
+  silhouette:
+    line: "Shadow-puppet animation. Flat black cut-out figures and
+           landscapes against a warm lit backdrop, hard clean edges, no
+           interior detail, depth shown only by overlapping layers."
+    axes: {reveal: 0, glyph: 0, lock: 0}
+    max_shot_s: 6
+    filters:
+      - {name: grade, contrast: 1.15, saturation: 0.9}
+
+  linocut:
+    line: "Linocut print. Bold carved shapes, visible gouge marks, two or
+           three ink colours on off-white paper, heavy black outlines, no
+           gradients."
+    axes: {reveal: 0, glyph: 0, lock: 0}
+    max_shot_s: 6
+    filters:
+      - {name: grade, contrast: 1.2, saturation: 0.85}
+
+  pixel_art:
+    # The plate is NOT generated as pixel art. A diffusion model works in
+    # continuous space and smears the grid that is the whole style, so the
+    # plate is clean flat illustration and the grid is imposed afterwards.
+    line: "Flat limited-palette illustration, bold simple shapes, hard
+           edges, no gradients, no texture, no fine detail."
+    axes: {reveal: 0, glyph: 1, lock: 2}
+    filters:
+      - {name: quantise, colours: 24}
+      - {name: pixelate, block: 6}
+
+  comic_halftone:
+    line: "Bold black ink outlines, flat colour fills, strong shadow
+           shapes, high contrast comic panel art."
+    axes: {reveal: 0, glyph: 1, lock: 1}
+    max_shot_s: 5
+    filters:
+      - {name: halftone, dot: 4, angle: 15}
+
+  riso_print:
+    line: "Simple graphic shapes, flat colour, bold composition, minimal
+           detail, poster-like."
+    axes: {reveal: 0, glyph: 1, lock: 1}
+    filters:
+      - {name: riso, colours: 4, offset: 2, grain: 10}
+
+  retro_vhs:
+    line: "1980s home video look, soft focus, warm practical lighting,
+           slightly washed colour."
+    axes: {reveal: 0, glyph: 2, lock: 1}
+    max_shot_s: 4
+    filters:
+      - {name: vhs, chroma: 3, scanline: 0.12, noise: 6}
+      - {name: grade, saturation: 1.1, contrast: 0.95}
+
+  whiteboard:
+    line: "Whiteboard scribe drawing. Flat white background, confident
+           black marker line drawings, one warm orange accent, no shading."
+    axes: {reveal: 2, glyph: 1, lock: 0}
+    max_shot_s: 5
+    start_hint: "a clean white board, almost empty, with only the faintest
+                 beginning of the drawing in the top left"
 
 # ---- Render stage (8): text and graphics, drawn in code ----
 # Overlays are composited over the finished clips, never generated. A

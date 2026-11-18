@@ -12,7 +12,7 @@ from pathlib import Path
 
 import yaml
 
-from . import dashboard
+from . import dashboard, style
 from .agents import (audio, cast, clips, finish, images, master, planner,
                      render, script, trend)
 from .agents.base import Ctx
@@ -163,15 +163,26 @@ def main():
     ap.add_argument("command", choices=["new", "resume"])
     ap.add_argument("name")
     ap.add_argument("--brief")
+    ap.add_argument("--style",
+                    help="a style profile from config.yaml styles:")
     ap.add_argument("--config", default="config.yaml")
     args = ap.parse_args()
 
     cfg = yaml.safe_load(Path(args.config).read_text())
+    # A typo in a style profile should fail on line one, not four
+    # stages in when the Cast agent asks for a filter that is not there.
+    problems = style.validate(cfg)
+    if problems:
+        sys.exit("config.yaml styles:\n  " + "\n  ".join(problems))
     p = Project(cfg["projects_dir"], args.name)
     if args.command == "new":
         if not args.brief:
             sys.exit("--brief is required for a new project")
         p.state["inputs"]["brief"] = args.brief
+        p.save()
+    if args.style:
+        style.load(cfg, args.style)          # raises on an unknown name
+        p.state["style"] = args.style
         p.save()
     if not p.state["inputs"].get("brief"):
         sys.exit("No brief saved for this project; start it with 'new'.")

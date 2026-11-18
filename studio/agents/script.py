@@ -1,6 +1,7 @@
 """Agent 3 - Script / Plot Generator: story, shot list and all prompts."""
 import json
 
+from .. import style
 from .base import StageResult, history, rules
 
 RELOAD = "__reload__"
@@ -92,7 +93,12 @@ def run(ctx, feedback=None, items=None):
         data = p.read_json("3_script.json")
     else:
         plan = p.read_json("2_plan.json")
+        # The style profile owns mode, shot length and whether text may
+        # go in a plate at all. One line here is what makes the three
+        # axes in config.yaml do anything.
+        prof = style.load(ctx.cfg, p.state.get("style"))
         prompt = (f"Approved plan:\n{json.dumps(plan, indent=2)}\n\n"
+                  f"{prof.script_rules()}\n\n"
                   f"{history(ctx, 'script')}\n{rules(ctx.cfg)}\n{FORMAT}")
         prev = p.read_json("3_script.json")
         if feedback and prev:

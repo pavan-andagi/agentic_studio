@@ -130,6 +130,19 @@ def edit_prompt(ctx, names, scene, first_is_scene=False):
             f"Do not copy the plain grey reference backgrounds.")
 
 
+def _safe(sh, prompt):
+    """Leave room for whatever the Render stage will composite here.
+
+    The Script agent names the part of the frame an overlay will sit in.
+    Without this the type lands on a busy ridge line and has to fight
+    the picture to be read."""
+    area = sh.get("safe_area")
+    if not area or not (sh.get("overlays") or []):
+        return prompt
+    return (f"{prompt} Keep the {area} of the frame visually quiet and "
+            f"uncluttered, with no important detail there.")
+
+
 def generate(ctx, sh, prompt, key, i, w, h):
     """One candidate: plain Z-Image, or Qwen Edit with the cast pictures.
 
@@ -142,6 +155,7 @@ def generate(ctx, sh, prompt, key, i, w, h):
     ccfg = cfg.get("cast") or {}
     out = p.dir / "candidates" / key
     seed = random.randint(1, 2**31)
+    prompt = _safe(sh, prompt)
     if not use_edit(ctx, sh):
         files = ctx.comfy.run(cfg["comfy"]["workflows"]["image"], {
             "@PROMPT": prompt, "@SEED": seed, "@WIDTH": w, "@HEIGHT": h,

@@ -78,7 +78,19 @@ class Profile:
     # -- what the agents are told ---------------------------------------
     def script_rules(self):
         """Injected into the Script agent prompt."""
-        out = [f"Keep every shot to {self.max_shot_s} seconds or less."]
+        out = []
+        if self.line:
+            out.append(
+                f"VISUAL STYLE, which overrides any other style described "
+                f"anywhere else: {self.line} Write every start and end image "
+                f"prompt in this style.")
+            if self.filtered:
+                out.append(
+                    "Do NOT describe the finished look of the video in the "
+                    "image prompts. The final treatment is applied "
+                    "afterwards in code, so the pictures you ask for are "
+                    "the plate described above and nothing more.")
+        out.append(f"Keep every shot to {self.max_shot_s} seconds or less.")
         m = self.forced_mode
         if m == "flf2v":
             out.append(
