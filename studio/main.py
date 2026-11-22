@@ -12,7 +12,7 @@ from pathlib import Path
 
 import yaml
 
-from . import dashboard, gpumon, style
+from . import dashboard, entry, gpumon, style
 from .agents import (audio, cast, clips, finish, images, master, planner,
                      render, script, trend)
 from .agents.base import Ctx
