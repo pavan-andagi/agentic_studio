@@ -225,7 +225,7 @@ do_url() {
     bad "and the proxy URL will not reach it. Add a RunPod account Secret"
     bad "named STUDIO_DASH_TOKEN, then restart the pod."
   else
-    note "https://${pod}-8765.proxy.runpod.net/?token=${STUDIO_DASH_TOKEN}"
+    note "https://${pod}-8765.proxy.runpod.net/?key=${STUDIO_DASH_TOKEN}"
   fi
   note "ComfyUI: https://${pod:-localhost}-8188.proxy.runpod.net/"
 }
