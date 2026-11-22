@@ -163,6 +163,12 @@ def main():
     ap.add_argument("command", choices=["new", "resume"])
     ap.add_argument("name")
     ap.add_argument("--brief")
+    ap.add_argument("--script", help="a finished shot list (JSON): "
+                    "skips Trend, Plan and Script")
+    ap.add_argument("--image", help="a picture to animate, or one "
+                    "keyframe to use alongside --script")
+    ap.add_argument("--images", help="a folder of keyframes to use "
+                    "with --script, instead of generating them")
     ap.add_argument("--style",
                     help="a style profile from config.yaml styles:")
     ap.add_argument("--config", default="config.yaml")

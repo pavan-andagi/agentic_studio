@@ -64,7 +64,7 @@ main{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:18px;pad
 .modes{display:flex;flex-wrap:wrap;gap:6px;margin-top:4px}
 .modes button{font-size:12px}
 .modes button.on{background:var(--ag);border-color:var(--ag);color:#fff}
-.newerr{color:var(--am);font-size:12px;margin-top:10px}
+.newerr{color:var(--am);font-size:12px;margin-top:10px;white-space:pre-wrap;font-family:ui-monospace,Menlo,monospace;max-height:220px;overflow:auto}
 .kpis{display:flex;flex-wrap:wrap;gap:10px;margin:2px 0 14px}
 .kpi{flex:1 1 130px;background:var(--panel2);border:1px solid var(--line);border-radius:10px;padding:10px 12px}
 .kpi b{display:block;font:600 22px/1.15 system-ui;color:var(--tx);font-variant-numeric:tabular-nums}
@@ -1317,7 +1317,8 @@ function newStart(){newRead();NEW.err='';
    style:NEW.style,script:NEW.script,files:NEW.files})})
   .then(function(r){return r.json().then(function(j){return[r.ok,j]})})
   .then(function(x){if(!x[0]){NEW.busy=false;
-    NEW.err=(x[1]&&x[1].error)||'could not start the run';return paintNew()}
+    NEW.err=((x[1]&&x[1].error)||'could not start the run')
+     +((x[1]&&x[1].log)?'\n\n'+x[1].log:'');return paintNew()}
    var nm=x[1].project;NEW=null;paintNew();
    projManual=true;proj=nm;lastSig=null;
    setTimeout(function(){load()},900)})

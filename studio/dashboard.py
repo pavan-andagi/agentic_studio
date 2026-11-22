@@ -409,14 +409,33 @@ class Handler(BaseHTTPRequestHandler):
             shutil.rmtree(d, ignore_errors=True)
             return self._send(400, {"error": f"could not save the upload: {e}"})
 
+        # The child's output goes to a file, not to DEVNULL. A run that
+        # dies in its first second - a bad argument, a missing import -
+        # otherwise vanishes and the page just sits there.
+        log = d / "spawn.log"
         try:
+            with open(log, "wb") as fh:
+                fh.write(("$ " + " ".join(cmd) + "\n\n").encode())
             proc = subprocess.Popen(cmd, cwd=str(self.cwd),
-                                    stdout=subprocess.DEVNULL,
+                                    stdout=open(log, "ab"),
                                     stderr=subprocess.STDOUT,
                                     stdin=subprocess.DEVNULL)
         except OSError as e:
             shutil.rmtree(d, ignore_errors=True)
             return self._send(500, {"error": f"could not start the run: {e}"})
+
+        # Give it a moment to fall over, so the browser hears about it now
+        # rather than showing an empty project for ever.
+        time.sleep(1.5)
+        if proc.poll() is not None:
+            tail = ""
+            try:
+                tail = log.read_text(errors="replace")[-700:]
+            except OSError:
+                pass
+            return self._send(500, {
+                "error": f"the run exited immediately (code {proc.returncode})",
+                "log": tail})
         RUNS[name] = proc
         return self._send(200, {"ok": True, "project": name, "pid": proc.pid})
 
