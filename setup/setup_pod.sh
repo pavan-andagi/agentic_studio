@@ -151,6 +151,60 @@ do_studio() {
 }
 
 # ----------------------------------------------------------------- models
+# A safetensors file carries an 8-byte header length, then a JSON header
+# naming every tensor's byte range. If those ranges do not end exactly at
+# the end of the file, the file is short or something was appended - and
+# nothing downstream will tell you. Non-safetensors files are accepted as
+# they are; there is nothing here to check.
+safetensors_ok() {
+  case "$1" in *.safetensors) ;; *) return 0 ;; esac
+  python3 - "$1" <<'EOPY'
+import json, struct, sys
+p = sys.argv[1]
+try:
+    with open(p, "rb") as f:
+        n = struct.unpack("<Q", f.read(8))[0]
+        if n <= 0 or n > 200_000_000:
+            sys.exit(1)
+        hdr = json.loads(f.read(n))
+        end = max(v["data_offsets"][1] for k, v in hdr.items()
+                  if k != "__metadata__")
+        f.seek(0, 2)
+        actual, want = f.tell(), 8 + n + end
+        if actual != want:
+            print(f"      header wants {want:,} bytes, file has {actual:,} "
+                  f"({actual - want:+,})")
+            sys.exit(1)
+except Exception as e:
+    print(f"      unreadable: {e}")
+    sys.exit(1)
+EOPY
+}
+
+# Every model file, checked. Fast - it reads a header, not the weights.
+do_verify() {
+  say "Model files"
+  local bad_n=0 ok_n=0
+  while IFS='|' read -r dir file url size group; do
+    [ -z "${dir:-}" ] && continue
+    local dest="$COMFY/models/$dir/$file"
+    [ -s "$dest" ] || continue
+    if safetensors_ok "$dest"; then
+      note "ok     $file  ($(du -h "$dest" | cut -f1))"
+      ok_n=$((ok_n+1))
+    else
+      bad "CORRUPT $file  ($(du -h "$dest" | cut -f1))"
+      bad_n=$((bad_n+1))
+    fi
+  done <<< "$MODELS"
+  note ""
+  if [ "$bad_n" -gt 0 ]; then
+    bad "$bad_n file(s) corrupt. Delete them and run:  bash setup_pod.sh models"
+  else
+    note "$ok_n file(s) check out"
+  fi
+}
+
 do_models() {
   say "Models"
   local hdr=()
@@ -160,25 +214,40 @@ do_models() {
     [ -z "${dir:-}" ] && continue
     want_group "$group" || { note "skip   $file  (group: $group)"; continue; }
     local dest="$COMFY/models/$dir/$file"
+    # "it exists" is not "it is right". A doubled qwen_3_4b.safetensors
+    # cost an evening: ComfyUI loaded it without complaint and the text
+    # encoder returned NaN, which decodes to a perfectly black image.
     if [ -s "$dest" ]; then
-      note "have   $file  ($(du -h "$dest" | cut -f1))"
-      skip=$((skip+1)); continue
+      if safetensors_ok "$dest"; then
+        note "have   $file  ($(du -h "$dest" | cut -f1))"
+        skip=$((skip+1)); continue
+      fi
+      bad "       ^ $file is corrupt ($(du -h "$dest" | cut -f1)) - refetching"
+      rm -f "$dest"
     fi
     [ "$MODE" = check ] && { note "MISSING $dir/$file  (~$size)"; fail=$((fail+1)); continue; }
     note "get    $file  (~$size)"
     mkdir -p "$(dirname "$dest")"
-    if wget -q --show-progress -c "${hdr[@]}" -O "$dest" "$url"; then
-      # an HTML error page is small; a real model is not
-      if [ "$(stat -c%s "$dest")" -lt 100000 ]; then
-        bad "       ^ got $(stat -c%s "$dest") bytes - that is an error page, removing"
-        head -c 200 "$dest" | tr -d '\0' | tee -a "$LOG"
-        rm -f "$dest"; fail=$((fail+1))
+    # Downloaded to .part and moved into place only once it checks out,
+    # so an interrupted run leaves no file that looks finished. No -c:
+    # wget cannot resume sensibly into -O, and a retry appends instead
+    # of restarting, which is exactly how a file ends up twice its size.
+    local part="$dest.part"
+    rm -f "$part"
+    if wget -q --show-progress "${hdr[@]}" -O "$part" "$url"; then
+      if [ "$(stat -c%s "$part")" -lt 100000 ]; then
+        bad "       ^ got $(stat -c%s "$part") bytes - that is an error page, removing"
+        head -c 200 "$part" | tr -d '\0' | tee -a "$LOG"
+        rm -f "$part"; fail=$((fail+1))
+      elif ! safetensors_ok "$part"; then
+        bad "       ^ downloaded but the file does not check out - removing"
+        rm -f "$part"; fail=$((fail+1))
       else
-        got=$((got+1))
+        mv -f "$part" "$dest"; got=$((got+1))
       fi
     else
       bad "       ^ FAILED (gated repo? export HF_TOKEN=hf_xxx)"
-      rm -f "$dest"; fail=$((fail+1))
+      rm -f "$part"; fail=$((fail+1))
     fi
   done <<< "$MODELS"
   note ""
@@ -310,6 +379,7 @@ printf '\n\n########## setup_pod.sh %s  mode=%s ##########\n' "$(date -Is)" "$MO
 case "$MODE" in
   stop)   do_stop ;;
   url)    do_url ;;
+  verify) do_verify ;;
   deps)   do_deps; do_check ;;
   check)  do_check; do_models ;;
   models) do_models; do_check ;;
