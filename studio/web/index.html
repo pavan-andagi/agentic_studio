@@ -50,6 +50,19 @@ main{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:18px;pad
    losing your work. Video cannot go on the SVG board - an SVG <image>
    will not play - so the clips live in their own strip under it. */
 .strip{display:flex;gap:10px;overflow-x:auto;padding:10px 2px 4px;margin-top:12px}
+/* Cost tab. The GPU is the only thing here that costs money by the
+   second, so it gets its own column and the idle figure sits next to
+   it rather than under it. */
+.kpis{display:flex;flex-wrap:wrap;gap:10px;margin:2px 0 14px}
+.kpi{flex:1 1 130px;background:var(--panel2);border:1px solid var(--line);border-radius:10px;padding:10px 12px}
+.kpi b{display:block;font:600 22px/1.15 system-ui;color:var(--tx);font-variant-numeric:tabular-nums}
+.kpi span{font-size:11px;color:var(--dim);letter-spacing:.02em}
+.kpi.warn b{color:var(--am)}
+.bars{display:grid;grid-template-columns:auto 1fr auto;gap:6px 10px;align-items:center;font-size:12px}
+.bars .nm{color:var(--mut)}
+.bars .bx{background:var(--line);border-radius:4px;height:10px;overflow:hidden}
+.bars .bx i{display:block;height:100%;background:var(--ag)}
+.bars .vv{color:var(--dim);font-variant-numeric:tabular-nums}
 .stripc{flex:0 0 152px;background:var(--panel2);border:1px solid var(--line);border-radius:10px;padding:8px}
 .stripc.ok{border-color:var(--ok)}
 .stripc.now{border-color:var(--ag);box-shadow:0 0 0 1px var(--ag)}
@@ -821,7 +834,7 @@ function renderHead(d,sel){var s=ST.filter(function(x){return x.id===sel})[0]||S
  var lab={done:'Approved',active:'Working',review:'Waiting for your review',pending:'Not reached yet'}[st];
  return'<h2>'+esc(s.n)+' <span class="pill">'+lab+'</span></h2><div class="m">'+esc(s.desc)+'</div>'}
 function renderTabs(tab){var wait=data&&data.pending;
- return[['review',(wait?'\u25CF ':'')+'Review'],['output','Output'],['master','Master decision'],['feedback','Feedback'],['timeline','Timeline'],['console','Console']].map(function(t){return'<button data-tab="'+t[0]+'" class="'+(tab===t[0]?'on':'')+'">'+t[1]+'</button>'}).join('')+'<button data-follow="1" title="Follow the live stage">Follow live</button>'}
+ return[['review',(wait?'\u25CF ':'')+'Review'],['output','Output'],['master','Master decision'],['feedback','Feedback'],['timeline','Timeline'],['cost','Cost'],['console','Console']].map(function(t){return'<button data-tab="'+t[0]+'" class="'+(tab===t[0]?'on':'')+'">'+t[1]+'</button>'}).join('')+'<button data-follow="1" title="Follow the live stage">Follow live</button>'}
 function previewHtml(d,rel){if(!rel)return'';var u=fileUrl(d.name,rel),x=rel.toLowerCase();
  if(/\.(png|jpg|jpeg|webp)$/.test(x))return'<a href="'+u+'" target="_blank"><img class="pv" src="'+u+'"></a>';
  if(/\.(mp4|webm|mov)$/.test(x))return'<video class="pv" controls preload="metadata" src="'+u+'"></video>';return''}
@@ -936,6 +949,32 @@ function renderMasterTable(m){
 var allFb=false;
 function renderFeedback(d,id){var l=(d.state.feedback_log||[]).filter(function(e){return allFb||e.stage===id||(id==='final'&&e.stage==='audio')});
  return'<label class="m"><input type="checkbox" data-allfb="1"'+(allFb?' checked':'')+'> show all stages</label>'+(l.length?l.map(function(e){return'<div class="ev"><span class="m">'+esc(e.time)+'</span><span class="tag '+(e.source==='master'?'master_decision':'human_feedback')+'">'+esc(e.source)+'</span><span>'+esc(e.stage)+': '+esc(e.text)+'</span></div>'}).join(''):empty('No feedback recorded for this stage yet.'))}
+function hms(s){s=Math.round(s);var h=Math.floor(s/3600),m=Math.floor(s%3600/60);
+ return h?h+'h '+('0'+m).slice(-2)+'m':(m?m+'m '+('0'+(s%60)).slice(-2)+'s':s+'s')}
+function renderCost(d){var c=d.cost;
+ if(!c)return empty('No GPU samples yet. Sampling starts with the run; if this stays empty, nvidia-smi is not available or gpu.enabled is off in config.yaml.');
+ var k=[['GPU busy',hms(c.busy),c.busy_pct+'% of the run',''],
+  ['GPU idle',hms(c.idle),'gates, LLM calls, ffmpeg, you',
+   c.busy_pct<60?' warn':''],
+  ['Run length',hms(c.wall),c.samples+' samples','']];
+ if(c.per_video_second!=null)k.push(['GPU s / video s',c.per_video_second,
+  'for '+c.video_seconds+'s of finished video','']);
+ if(c.cost!=null)k.push(['GPU cost','$'+c.cost.toFixed(2),
+  'at $'+c.rate+'/hour','']);
+ var kp='<div class="kpis">'+k.map(function(x){return'<div class="kpi'
+  +x[3]+'"><span>'+esc(x[0])+'</span><b>'+esc(String(x[1]))+'</b><span>'
+  +esc(x[2])+'</span></div>'}).join('')+'</div>';
+ var bars='';
+ if(c.stages&&c.stages.length){var mx=c.stages[0].seconds||1;
+  bars='<div class="ct">GPU seconds by stage</div><div class="bars">'
+   +c.stages.map(function(x){return'<div class="nm">'+esc(x.stage)
+    +'</div><div class="bx"><i style="width:'
+    +Math.max(2,Math.round(x.seconds/mx*100))+'%"></i></div>'
+    +'<div class="vv">'+hms(x.seconds)+'</div>'}).join('')+'</div>'}
+ var note='<div class="hint" style="margin-top:12px">'
+  +(c.live?'Sampling now. ':'Sampler not running. ')
+  +'Idle time is the GPU waiting on a human. It is the one number that gets worse with more users, not better.</div>';
+ return'<div class="card">'+kp+bars+note+'</div>'}
 function renderTimeline(d){var ev=d.events.slice().reverse();if(!ev.length)return empty('No events yet.');
  return ev.map(function(e){return'<div class="ev"><span class="m">'+clock(e.time)+'</span><span class="tag '+esc(e.kind)+'">'+esc(e.kind.replace('_',' '))+'</span><span><b>'+esc(e.stage||'')+'</b> '+esc(cut(e.text,300))+(e.frm?' <span class="m">(sent back from '+esc(e.frm)+')</span>':'')+'</span></div>'}).join('')}
 function renderConsole(d){return'<div class="con" id="con">'+esc((d.console||[]).join('\n'))+'</div>'}
@@ -948,6 +987,7 @@ function renderTab(d,sel,tab){
  if(tab==='review')return sentMsg?('<div class="card"><div class="ct">'
   +esc(sentMsg)+'</div></div>'+clipStrip(d)):renderReview(d);
  var M={output:renderOutput,master:renderMaster,feedback:renderFeedback};
+ if(tab==='cost')return renderCost(d);
  return M[tab]?M[tab](d,sel):(tab==='timeline'?renderTimeline(d):renderConsole(d))}
 /* ---------------- communication view ---------------- */
 var LANES=[{id:'you',n:'You',r:'review'},{id:'orch',n:'Orchestrator',r:'coordinator'},{id:'trend',n:'Trend',r:'agent 1'},{id:'plan',n:'Planner',r:'agent 2'},{id:'script',n:'Script',r:'agent 3'},{id:'cast',n:'Cast',r:'agent 4'},{id:'images',n:'Images',r:'agent 5'},{id:'clips',n:'Clips',r:'agent 6'},{id:'finish',n:'Finish',r:'agent 7'},{id:'render',n:'Overlays',r:'agent 8'},{id:'audio',n:'Audio',r:'agent 9'},{id:'master',n:'Master',r:'showrunner'},{id:'claude',n:'Claude API',r:'LLM'},{id:'comfy',n:'ComfyUI',r:'GPU'}];

@@ -21,6 +21,8 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from urllib.parse import parse_qs, unquote, urlparse
 
+from . import gpumon
+
 WEB = Path(__file__).parent / "web"
 STAGES = ["trend", "plan", "script", "cast", "images", "clips",
           "finish", "render", "audio"]
@@ -141,6 +143,7 @@ def project_data(root, name):
         "console": tail(d / "console.log", 200),
         "candidates": candidates, "keyframes": keyframes, "takes": takes,
         "clips": clips, "finished": finished, "composed": composed,
+        "cost": gpumon.report(d),
         "sheets": images_in("sheets"),
         "cast": {n: rel(Path(f)) for n, f in (st.get("cast") or {}).items()
                  if f and Path(f).exists()},

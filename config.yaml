@@ -221,4 +221,15 @@ audio:
     level_db: -20
     max_seconds: 20               # generated once, looped with crossfades
 
+# ---- GPU cost tracking ----
+# A sampler thread writes projects/<name>/gpu.csv for the life of a run,
+# and the dashboard's Cost tab turns it into busy/idle seconds, a
+# per-stage breakdown and a cost per second of finished video.
+# Idle time is the GPU waiting on a human at a gate. It is the number
+# that gets worse with more users, not better, so it is worth watching.
+gpu:
+  enabled: true
+  every_seconds: 5
+  hourly_rate: 0          # your pod's $/hour; 0 hides the money column
+
 projects_dir: projects

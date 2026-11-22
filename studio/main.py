@@ -12,7 +12,7 @@ from pathlib import Path
 
 import yaml
 
-from . import dashboard, style
+from . import dashboard, gpumon, style
 from .agents import (audio, cast, clips, finish, images, master, planner,
                      render, script, trend)
 from .agents.base import Ctx
@@ -193,6 +193,15 @@ def main():
     p.save()
     sys.stdout = Tee(sys.stdout, p.dir / "console.log")
     bind(p)
+    # Sample the GPU for the life of the run. A gate shows up as the
+    # card sitting idle, which is the number worth knowing.
+    gcfg = cfg.get("gpu") or {}
+    if gcfg.get("enabled", True) and gpumon.available():
+        p.state["gpu"] = {"hourly_rate": gcfg.get("hourly_rate", 0)}
+        p.save()
+        gpumon.start(p.dir, gcfg.get("every_seconds", 5))
+        print(f"[gpu] sampling every {gcfg.get('every_seconds', 5)}s "
+              f"-> {p.dir / 'gpu.csv'}")
     if dcfg.get("enabled", True):
         enable_web(p)
         dashboard.start(cfg["projects_dir"], dcfg.get("port", 8765),
