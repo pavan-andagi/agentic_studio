@@ -207,6 +207,29 @@ do_stop() {
   done
 }
 
+# -------------------------------------------------------------------- url
+# The one thing you want after a restart: where the dashboard is.
+#
+# The pod id changes every restart, so the host is built from RUNPOD_POD_ID
+# rather than remembered. The token must NOT change, or every restart hands
+# you a different link - so keep it in a RunPod account Secret named
+# STUDIO_DASH_TOKEN and it survives the pod being destroyed.
+do_url() {
+  local pod="${RUNPOD_POD_ID:-}"
+  say "Dashboard"
+  if [ -z "$pod" ]; then
+    bad "RUNPOD_POD_ID is not set - not a RunPod pod? Then it is"
+    bad "  http://localhost:8765/"
+  elif [ -z "${STUDIO_DASH_TOKEN:-}" ]; then
+    bad "STUDIO_DASH_TOKEN is not set, so the dashboard binds 127.0.0.1 only"
+    bad "and the proxy URL will not reach it. Add a RunPod account Secret"
+    bad "named STUDIO_DASH_TOKEN, then restart the pod."
+  else
+    note "https://${pod}-8765.proxy.runpod.net/?token=${STUDIO_DASH_TOKEN}"
+  fi
+  note "ComfyUI: https://${pod:-localhost}-8188.proxy.runpod.net/"
+}
+
 # ----------------------------------------------------------------- report
 do_check() {
   say "State"
@@ -276,6 +299,8 @@ except Exception as e:
 
   say "Start ComfyUI with"
   note "cd $COMFY && nohup python main.py --listen 0.0.0.0 --port 8188 > $ROOT/comfy.log 2>&1 &"
+
+  do_url
 }
 
 # ------------------------------------------------------------------- main
@@ -284,6 +309,7 @@ printf '\n\n########## setup_pod.sh %s  mode=%s ##########\n' "$(date -Is)" "$MO
 
 case "$MODE" in
   stop)   do_stop ;;
+  url)    do_url ;;
   deps)   do_deps; do_check ;;
   check)  do_check; do_models ;;
   models) do_models; do_check ;;
