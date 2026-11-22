@@ -265,11 +265,26 @@ def prepare(project, cfg, script=None, image=None, images=None, brief=None,
         notes.append(f"{len(needed - chained - set(kf))} keyframe(s) still "
                      f"to generate")
 
+    if describe:
+        project.mark("cast")             # one shot, no cast list
+        notes.append("no characters to cast, so the run starts at Images")
+
+    # Which stage this run actually begins at. Written once, here, rather
+    # than guessed later from the approvals - those accumulate as the run
+    # goes, and by stage 6 you can no longer tell where it came in.
+    order = ["trend", "plan", "script", "cast", "images", "clips"]
+    at = next((s for s in order if not project.approved(s)), "clips")
+    mode = ("describe" if describe else
+            "image" if (image and not script) else
+            "frames" if (script and (images or image)) else
+            "script" if script else "topic")
     project.state["entry"] = {
         "script": str(script) if script else None,
         "image": str(image) if image else None,
         "images": str(images) if images else None,
         "describe": describe or None,
+        "mode": mode,
+        "at": at,
     }
     project.save()
 

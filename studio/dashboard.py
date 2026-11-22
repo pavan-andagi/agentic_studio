@@ -176,7 +176,8 @@ def project_data(root, name):
             keyframes[k] = r
     data = {
         "name": name, "state": {k: st.get(k) for k in (
-            "approved", "inputs", "current", "feedback_log", "guidance")},
+            "approved", "inputs", "current", "feedback_log", "guidance",
+            "entry")},
         "run": {"alive": is_alive, "pid": run_pid,
                 "started": (st.get("run") or {}).get("started")},
         "files": {k: read_json(d / f) for k, f in FILES.items()},

@@ -104,6 +104,30 @@ svg{width:100%;height:auto;display:block}
 /* What each crew member is thinking: their name while they doze, their
    name and the job in hand once they are awake. */
 .bb{fill:#1b1a18;stroke:#4a4844;stroke-width:1.2}
+/* ---- the entry column ------------------------------------------------
+   Where a run came in. Four ways to start, each wired to the stage it
+   lands on; the one this run used is lit, the rest sit back as a map of
+   what else was possible. */
+.ent .eb{fill:#191816;stroke:#353431;stroke-width:1.1}
+.ent .eac{fill:#353431}
+.ent .ebt{font-size:12.5px;font-weight:600;fill:#86847b}
+.ent .ebs{font-size:10.5px;fill:#65635c}
+.ent .elink{fill:none;stroke:#353431;stroke-width:1.3;stroke-dasharray:3 4}
+.ent .edot{fill:#353431}
+.ent.on .eb{fill:#201D36;stroke:var(--ag);stroke-width:1.5}
+.ent.on .eac{fill:var(--ag)}
+.ent.on .ebt{fill:var(--agt)}
+.ent.on .ebs{fill:#9D98DC}
+.ent.on .elink{stroke:var(--ag);stroke-width:2;stroke-dasharray:none;
+ opacity:.85}
+.ent.on .edot{fill:var(--ag)}
+.ent.out.on .eb{fill:#10302A;stroke:var(--ok)}
+.ent.out.on .eac,.ent.out.on .edot{fill:var(--ok)}
+.ent.out.on .ebt{fill:var(--okt)}
+.ent.out.on .ebs{fill:#7FC4AC}
+.ent.out.on .elink{stroke:var(--ok)}
+.etag{font-size:9px;fill:var(--ag);letter-spacing:1.4px;text-transform:uppercase}
+.ehd{font-size:9.5px;fill:var(--dim);letter-spacing:1.6px;text-transform:uppercase}
 .done .bb{fill:#102c25;stroke:var(--ok)}
 .active .bb{fill:#1e1b36;stroke:var(--ag)}
 .review .bb{fill:#30240e;stroke:var(--am)}
@@ -758,11 +782,36 @@ function bubble(bx,by,bw,title,sub,dream){
  if(sub)o+='<text class="bs" x="'+(bx+13)+'" y="'+(ty+18)+'">'+esc(sub)+'</text>';
  return o+'</g>'}
 
+/* Each way in, and the stage it lands on. entry.prepare() writes the
+   stage into state.entry.at, so this is a lookup, not a guess. */
+var ENTRY=[{at:'trend', n:'Topic',       s:'a brief, nothing else'},
+           {at:'cast',  n:'Script',      s:'your shot list'},
+           {at:'images',n:'Description', s:'words, drawn here'},
+           {at:'clips', n:'Pictures',    s:'your own keyframes'}];
+/* box: 150 wide, sitting in the margin to the left of the stations,
+   with a 3px accent on its leading edge and a wire into the rail. */
+function entryBox(y,h,e,on,tag,cls){
+ var bh=42,by=y+(h-bh)/2,bx=-186,bw=150,mid=by+bh/2;
+ return'<g class="ent'+(on?' on':'')+(cls?' '+cls:'')+'">'
+  +'<path class="elink" d="M'+(bx+bw)+' '+mid+'H34"/>'
+  +'<circle class="edot" cx="30" cy="'+mid+'" r="3"/>'
+  +'<rect class="eb" x="'+bx+'" y="'+by+'" width="'+bw+'" height="'+bh
+   +'" rx="10"/>'
+  +'<rect class="eac" x="'+bx+'" y="'+(by+9)+'" width="3" height="'+(bh-18)
+   +'" rx="1.5"/>'
+  +'<text class="ebt" x="'+(bx+14)+'" y="'+(by+19)+'">'+esc(e.n)+'</text>'
+  +'<text class="ebs" x="'+(bx+14)+'" y="'+(by+34)+'">'+esc(e.s)+'</text>'
+  +(on&&tag?'<text class="etag" x="'+(bx+bw)+'" y="'+(by-6)
+    +'" text-anchor="end">'+esc(tag)+'</text>':'')
+  +'</g>'}
 function renderFlow(d,sel){
  var NS=ST.filter(function(s){return s.id!=='final'}).length,H=86,out=[],
      cur=d.state.current||{},live=cur.stage,pend=d.pending,
+     ent=d.state.entry||{},entAt=ent.at||'trend',
      Y=function(i){return 56+i*120};
- out.push('<svg viewBox="0 0 900 '+(Y(NS)+96)+'" role="img"><defs>'
+ // The margin to the left of x=0 is where the entry column lives, so
+ // every existing coordinate stays exactly where it was.
+ out.push('<svg viewBox="-206 0 1106 '+(Y(NS)+96)+'" role="img"><defs>'
   +'<linearGradient id="gShell" x1="0" y1="0" x2="0" y2="1">'
   +'<stop offset="0" stop-color="#ffffff"/><stop offset=".55" stop-color="#f4f2ee"/>'
   +'<stop offset="1" stop-color="#d7d4cd"/></linearGradient>'
@@ -809,6 +858,8 @@ function renderFlow(d,sel){
   // Only whoever is working stays awake. Finished crew doze like the
   // ones who have not started; the bubble colour still says approved.
   var asleep=st!=='active';
+  var ein=ENTRY.filter(function(x){return x.at===s.id})[0];
+  if(ein)out.push(entryBox(y,H,ein,entAt===s.id,'this run',''));
   out.push('<g class="node '+st+(asleep?' asleep':'')+(sel===s.id?' sel':'')
    +'" data-stage="'+s.id+'">'
    +hit(34,y-6,318,H+12)+(sel===s.id?halo(66,y+40):'')
@@ -835,7 +886,13 @@ function renderFlow(d,sel){
   +ml.map(function(l,i){return'<text class="s" x="640" y="'+(166+i*18)+'">'+esc(l)+'</text>'}).join('')
   +'</g>');
 
+ out.push('<text class="ehd" x="-186" y="30">Starts from</text>');
+
  var fs=stageStatus(d,'final'),fy=Y(NS),fz=true;   // the reel never works
+ // The way out. One box, lit once there is actually a file.
+ out.push(entryBox(fy-6,80,{n:'Final video',
+   s:(d.final&&d.final.length)?'ready to download':'when every stage is done'},
+   !!(d.final&&d.final.length),'delivered','out'));
  out.push('<g class="node '+fs+' asleep'+(sel==='final'?' sel':'')
   +'" data-stage="final">'
   +hit(34,fy-6,318,80)+(sel==='final'?halo(66,fy+32):'')
