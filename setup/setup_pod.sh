@@ -2,9 +2,11 @@
 # setup_pod.sh - bring a fresh RunPod pod up to a working studio.
 #
 #   bash setup_pod.sh              # everything
+#   bash setup_pod.sh deps         # system + python packages only (fast)
 #   bash setup_pod.sh cast         # only what the Cast stage needs (~40 GB)
 #   bash setup_pod.sh models       # skip ComfyUI/repo, models only
 #   bash setup_pod.sh check        # download nothing, just report
+#   bash setup_pod.sh stop         # kill a stuck studio / ComfyUI and free ports
 #
 # Safe to re-run: every step skips work already done, and wget resumes
 # a partial file instead of starting again.
@@ -27,12 +29,14 @@ ROOT=${ROOT:-/workspace}
 COMFY=$ROOT/ComfyUI
 STUDIO=$ROOT/agentic_studio
 REPO=${STUDIO_REPO:-pavan-andagi/agentic_studio}
-BRANCH=${STUDIO_BRANCH:-cast-dev}
+BRANCH=${STUDIO_BRANCH:-video-style-selector}
 MODE=${1:-all}
 LOG=$ROOT/setup_pod.log
+PIP="pip install -q --break-system-packages"
 
 say()  { printf '\n\033[1m=== %s ===\033[0m\n' "$*" | tee -a "$LOG"; }
 note() { printf '    %s\n' "$*" | tee -a "$LOG"; }
+bad()  { printf '    \033[31m%s\033[0m\n' "$*" | tee -a "$LOG"; }
 
 # ---------------------------------------------------------------- models
 # folder|filename|url|approx size|group
@@ -63,32 +67,69 @@ want_group() {                       # which groups this run should fetch
   esac
 }
 
+# ------------------------------------------------------------------ deps
+# Everything the studio needs that is NOT a model. Each of these has cost
+# a live run at some point:
+#   ffmpeg/ffprobe  - the Finish and Render stages and the whole audio mix
+#   espeak-ng       - Kokoro will not speak without it
+#   libsndfile1     - soundfile, which Kokoro writes its WAVs through
+#   a TTF font      - render.py draws captions with PIL and hunts the
+#                     filesystem for a face; with none it falls back to a
+#                     bitmap font and the type comes out tiny
+do_deps() {
+  say "System packages"
+  if command -v apt-get >/dev/null; then
+    apt-get update -qq 2>/dev/null
+    apt-get install -y -qq ffmpeg espeak-ng libsndfile1 \
+        fonts-dejavu-core 2>/dev/null \
+      && note "ffmpeg, espeak-ng, libsndfile1, DejaVu fonts" \
+      || bad "apt-get reported problems - check the log"
+  else
+    note "no apt-get here; install ffmpeg, espeak-ng, libsndfile1 and a TTF font yourself"
+  fi
+
+  say "Python packages"
+  # studio itself
+  $PIP anthropic requests pyyaml numpy pillow \
+    && note "anthropic requests pyyaml numpy pillow" \
+    || bad "pip reported problems"
+  # voice-over. kokoro pulls torch deps, so it goes last and on its own
+  $PIP soundfile && note "soundfile" || bad "soundfile FAILED"
+  $PIP 'kokoro>=0.9' && note "kokoro" \
+    || bad "kokoro FAILED - the Audio stage will not speak"
+}
+
 # --------------------------------------------------------------- comfyui
 do_comfy() {
   say "ComfyUI"
   if [ -d "$COMFY/.git" ]; then
-    note "already present"
+    note "already present ($(git -C "$COMFY" rev-parse --short HEAD))"
   else
     git clone --depth 1 https://github.com/comfyanonymous/ComfyUI.git "$COMFY" \
-      || { note "clone FAILED"; return 1; }
+      || { bad "clone FAILED"; return 1; }
   fi
   note "installing python requirements (fresh pod = fresh site-packages)"
-  pip install -q -r "$COMFY/requirements.txt" || note "pip reported problems"
+  $PIP -r "$COMFY/requirements.txt" || note "pip reported problems"
 
   mkdir -p "$COMFY/custom_nodes"
+  # Existing nodes are left alone on purpose. An unpinned `git pull` here
+  # once dragged in a major diffusers bump mid-session; update a node
+  # deliberately, not as a side effect of running setup.
   for r in \
       https://github.com/Kosinkadink/ComfyUI-VideoHelperSuite.git \
       https://github.com/Lightricks/ComfyUI-LTXVideo.git \
       https://github.com/Fannovel16/ComfyUI-Frame-Interpolation.git ; do
     d="$COMFY/custom_nodes/$(basename "$r" .git)"
-    [ -d "$d" ] && { note "$(basename "$d") ok"; continue; }
+    [ -d "$d" ] && { note "$(basename "$d") ok ($(git -C "$d" rev-parse --short HEAD 2>/dev/null))"; continue; }
     git clone --depth 1 "$r" "$d" && note "cloned $(basename "$d")"
   done
   [ -f "$COMFY/custom_nodes/ComfyUI-VideoHelperSuite/requirements.txt" ] && \
-    pip install -q -r "$COMFY/custom_nodes/ComfyUI-VideoHelperSuite/requirements.txt"
+    $PIP -r "$COMFY/custom_nodes/ComfyUI-VideoHelperSuite/requirements.txt"
+  [ -f "$COMFY/custom_nodes/ComfyUI-LTXVideo/requirements.txt" ] && \
+    $PIP -r "$COMFY/custom_nodes/ComfyUI-LTXVideo/requirements.txt"
   # Frame-Interpolation's own install.py dies on cupy-wheel / pkg_resources
   note "frame-interpolation deps (skipping its install.py on purpose)"
-  pip install -q cupy-cuda12x einops opencv-contrib-python kornia scipy \
+  $PIP cupy-cuda12x einops opencv-contrib-python kornia scipy \
     || note "cupy install reported problems"
 
   mkdir -p "$COMFY/models"/{diffusion_models,text_encoders,vae,loras,checkpoints,upscale_models,latent_upscale_models,model_patches}
@@ -105,9 +146,8 @@ do_studio() {
     local url="https://github.com/$REPO.git"
     [ -n "${GITHUB_TOKEN:-}" ] && url="https://$GITHUB_TOKEN@github.com/$REPO.git"
     git clone -q -b "$BRANCH" "$url" "$STUDIO" \
-      && note "cloned $REPO ($BRANCH)" || note "clone FAILED - private repo needs GITHUB_TOKEN"
+      && note "cloned $REPO ($BRANCH)" || bad "clone FAILED - private repo needs GITHUB_TOKEN"
   fi
-  pip install -q anthropic requests pyyaml 2>/dev/null
 }
 
 # ----------------------------------------------------------------- models
@@ -130,14 +170,14 @@ do_models() {
     if wget -q --show-progress -c "${hdr[@]}" -O "$dest" "$url"; then
       # an HTML error page is small; a real model is not
       if [ "$(stat -c%s "$dest")" -lt 100000 ]; then
-        note "       ^ got $(stat -c%s "$dest") bytes - that is an error page, removing"
+        bad "       ^ got $(stat -c%s "$dest") bytes - that is an error page, removing"
         head -c 200 "$dest" | tr -d '\0' | tee -a "$LOG"
         rm -f "$dest"; fail=$((fail+1))
       else
         got=$((got+1))
       fi
     else
-      note "       ^ FAILED (gated repo? export HF_TOKEN=hf_xxx)"
+      bad "       ^ FAILED (gated repo? export HF_TOKEN=hf_xxx)"
       rm -f "$dest"; fail=$((fail+1))
     fi
   done <<< "$MODELS"
@@ -145,25 +185,95 @@ do_models() {
   note "downloaded $got, already had $skip, failed/missing $fail"
 }
 
+# ------------------------------------------------------------------ stop
+# Two traps that have cost real time:
+#   - Ctrl-Z suspends the studio instead of ending it. A stopped process
+#     cannot act on SIGTERM, so pkill looks like it did nothing while the
+#     dashboard port stays bound.
+#   - ComfyUI started as `cd ComfyUI && python main.py` has no "ComfyUI/"
+#     in its command line, so `pkill -f ComfyUI/main.py` never matches it.
+do_stop() {
+  say "Stopping studio and ComfyUI"
+  pkill -9 -f "studio.main"     && note "studio killed"   || note "no studio running"
+  pkill -9 -f "main.py --listen" && note "ComfyUI killed" || note "no ComfyUI running"
+  sleep 1
+  for port in 8188 8765; do
+    if ss -ltn 2>/dev/null | grep -q ":$port "; then
+      bad "port $port still bound:"
+      ss -ltnp 2>/dev/null | grep ":$port " | tee -a "$LOG"
+    else
+      note "port $port free"
+    fi
+  done
+}
+
 # ----------------------------------------------------------------- report
 do_check() {
   say "State"
   for v in HF_TOKEN GITHUB_TOKEN ANTHROPIC_API_KEY STUDIO_DASH_TOKEN; do
-    [ -n "${!v:-}" ] && note "$v: set" || note "$v: NOT SET"
+    [ -n "${!v:-}" ] && note "$v: set" || bad "$v: NOT SET"
   done
   note ""
   note "disk:  $(df -h "$ROOT" | tail -1)"
   if mount | grep -q " $ROOT "; then
     note "mount: $(mount | grep " $ROOT " | head -1)"
   else
-    note "mount: $ROOT is CONTAINER DISK - everything here is lost when the pod stops"
+    bad "mount: $ROOT is CONTAINER DISK - everything here is lost when the pod stops"
   fi
-  note ""
+
+  say "Tools"
+  for t in ffmpeg ffprobe espeak-ng; do
+    command -v "$t" >/dev/null && note "$t: $(command -v "$t")" || bad "$t: MISSING"
+  done
+  local font
+  font=$(find /usr/share/fonts -name '*.ttf' 2>/dev/null | head -1)
+  [ -n "$font" ] && note "font: $font" \
+    || bad "font: NONE - captions will fall back to a tiny bitmap face"
+
+  say "Python"
+  python - <<'PY' 2>&1 | tee -a "$LOG"
+for m in ("yaml", "anthropic", "requests", "numpy", "PIL",
+          "soundfile", "kokoro"):
+    try:
+        __import__(m)
+        print(f"    {m}: ok")
+    except Exception as e:                                   # noqa: BLE001
+        print(f"    {m}: MISSING  ({type(e).__name__})")
+PY
+
+  say "Models on disk"
   du -sh "$COMFY/models"/* 2>/dev/null | grep -v '\s0\s' | tee -a "$LOG"
-  if [ -d "$STUDIO" ]; then
+
+  if [ -d "$STUDIO/studio" ]; then
     say "Workflows"
-    (cd "$STUDIO" && python -m studio.check_workflows 2>&1 | tee -a "$LOG")
+    (cd "$STUDIO" && python -m studio.check_workflows 2>&1 | tail -20 | tee -a "$LOG")
+    say "Pipeline"
+    (cd "$STUDIO" && python -c "
+try:
+    from studio.approval import STAGES
+    print('    stages:', ' -> '.join(STAGES))
+except Exception as e:
+    print('    could not import the pipeline:', e)" 2>&1 | tee -a "$LOG")
+  elif [ -d "$STUDIO" ]; then
+    bad "$STUDIO exists but has no studio/ package - wrong branch or a bad clone"
   fi
+
+  say "Running"
+  pgrep -fa "studio.main"      >/dev/null && note "studio: running"  || note "studio: not running"
+  if curl -sf localhost:8188/system_stats >/dev/null 2>&1; then
+    note "comfy:  up on 8188"
+    # The ambience layer needs this node; an older ComfyUI-LTXVideo
+    # answers {} and the Audio stage dies halfway through.
+    if curl -s localhost:8188/object_info/LTXVAudioOnlyModel | grep -q LTXVAudioOnlyModel; then
+      note "comfy:  LTXVAudioOnlyModel present (ambience will work)"
+    else
+      bad "comfy:  LTXVAudioOnlyModel MISSING - update ComfyUI-LTXVideo and restart ComfyUI,"
+      bad "        or set audio.ambience.enabled: false in config.yaml"
+    fi
+  else
+    note "comfy:  not reachable on 8188"
+  fi
+
   say "Start ComfyUI with"
   note "cd $COMFY && nohup python main.py --listen 0.0.0.0 --port 8188 > $ROOT/comfy.log 2>&1 &"
 }
@@ -173,9 +283,11 @@ mkdir -p "$ROOT"
 printf '\n\n########## setup_pod.sh %s  mode=%s ##########\n' "$(date -Is)" "$MODE" >> "$LOG"
 
 case "$MODE" in
+  stop)   do_stop ;;
+  deps)   do_deps; do_check ;;
   check)  do_check; do_models ;;
   models) do_models; do_check ;;
-  *)      do_comfy; do_studio; do_models; do_check ;;
+  *)      do_deps; do_comfy; do_studio; do_models; do_check ;;
 esac
 
 say "Done - full log at $LOG"
