@@ -968,10 +968,11 @@ var NEW=null;   // null = closed, otherwise the form's current state
 var MODES=[['topic','Topic','a brief; the studio writes everything'],
  ['script','Script','a finished shot list (JSON); keyframes generated'],
  ['frames','Script + pictures','a shot list and your own keyframes'],
- ['image','One picture','animate a single image']];
+ ['image','One picture','animate a single image'],
+ ['describe','Describe a picture','the studio draws it, then animates it']];
 function renderNew(){if(!NEW)return '';
  var m=NEW.mode,needsScript=(m==='script'||m==='frames'),
-     needsPics=(m==='frames'||m==='image');
+     needsPics=(m==='frames'||m==='image'),needsLook=(m==='describe');
  return'<div class="newp" data-newbg="1"><div class="newb">'
  +'<h3>New run</h3><div class="m">The run starts as its own process, so this page keeps working while it goes.</div>'
  +'<label>What are you starting from</label><div class="modes">'
@@ -981,10 +982,12 @@ function renderNew(){if(!NEW)return '';
  +esc((MODES.filter(function(x){return x[0]===m})[0]||[])[2]||'')+'</div>'
  +'<label>Project name</label><input type="text" id="nm" value="'
  +esc(NEW.name)+'" placeholder="letters, digits, - and _">'
- +'<label>'+(m==='image'?'What should move':'Brief')
+ +(needsLook?'<label>What the picture shows</label><textarea id="dc" placeholder="a supermassive black hole seen edge on, orange accretion disk, dust lanes, deep space behind">'
+  +esc(NEW.describe||'')+'</textarea>':'')
+ +'<label>'+(m==='image'||m==='describe'?'What should move':'Brief')
  +(m==='script'||m==='frames'?' (optional)':'')+'</label>'
  +'<textarea id="bf" placeholder="'
- +(m==='image'?'slow push in, the lantern flickers'
+ +(m==='image'||m==='describe'?'slow push in, the lantern flickers'
   :'A 15-second narrated short ...')+'">'+esc(NEW.brief)+'</textarea>'
  +'<label>Style</label><select id="sy"><option value="">(config default)</option>'+(NEW.styles||[]).map(function(x){return'<option'
   +(NEW.style===x?' selected':'')+'>'+esc(x)+'</option>'}).join('')+'</select>'
@@ -1281,7 +1284,7 @@ function send(text){var p=data&&data.pending;if(!p)return;
    return post(cur.id,text)})
   .catch(function(){offline(true)})}
 function redraw(){lastSig=null;render()}
-function newOpen(){NEW={mode:'topic',name:'',brief:'',style:'',script:'',
+function newOpen(){NEW={mode:'topic',name:'',brief:'',style:'',script:'',describe:'',
   files:[],styles:(NEW&&NEW.styles)||[],err:'',busy:false};
  fetch(q('/api/styles')).then(function(r){return r.json()})
   .then(function(j){if(NEW){NEW.styles=j.styles||[];paintNew()}})
@@ -1289,7 +1292,8 @@ function newOpen(){NEW={mode:'topic',name:'',brief:'',style:'',script:'',
 function newRead(){if(!NEW)return;
  var g=function(id){var e=document.getElementById(id);return e?e.value:''};
  NEW.name=g('nm');NEW.brief=g('bf');NEW.style=g('sy');
- if(document.getElementById('sc'))NEW.script=g('sc')}
+ if(document.getElementById('sc'))NEW.script=g('sc');
+ if(document.getElementById('dc'))NEW.describe=g('dc')}
 function paintNew(){document.getElementById('modal').innerHTML=renderNew();
  var f=document.getElementById('fs');
  if(f)f.onchange=function(){var list=[].slice.call(f.files),out=[],left=list.length;
@@ -1306,15 +1310,19 @@ function newStart(){newRead();NEW.err='';
   NEW.err='A topic needs a brief.';return paintNew()}
  if((NEW.mode==='script'||NEW.mode==='frames')&&!NEW.script.trim()){
   NEW.err='Paste the shot list.';return paintNew()}
- if(NEW.mode!=='topic'&&NEW.mode!=='script'&&!NEW.files.length){
+ if(NEW.mode==='describe'&&!NEW.describe.trim()){
+  NEW.err='Describe the picture you want drawn.';return paintNew()}
+ if(NEW.mode!=='topic'&&NEW.mode!=='script'&&NEW.mode!=='describe'
+    &&!NEW.files.length){
   NEW.err='Choose at least one picture.';return paintNew()}
- if(NEW.mode==='image'&&!NEW.brief.trim()){
+ if((NEW.mode==='image'||NEW.mode==='describe')&&!NEW.brief.trim()){
   NEW.err='Say what should move.';return paintNew()}
  NEW.busy=true;paintNew();
  fetch(q('/api/new'),{method:'POST',
   headers:{'Content-Type':'application/json'},
   body:JSON.stringify({name:NEW.name,mode:NEW.mode,brief:NEW.brief,
-   style:NEW.style,script:NEW.script,files:NEW.files})})
+   style:NEW.style,script:NEW.script,describe:NEW.describe,
+   files:NEW.files})})
   .then(function(r){return r.json().then(function(j){return[r.ok,j]})})
   .then(function(x){if(!x[0]){NEW.busy=false;
     NEW.err=((x[1]&&x[1].error)||'could not start the run')

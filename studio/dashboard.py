@@ -376,8 +376,14 @@ class Handler(BaseHTTPRequestHandler):
         brief = str(body.get("brief", "")).strip()
         style = str(body.get("style", "")).strip()
         mode = str(body.get("mode", "topic")).strip()
+        describe = str(body.get("describe", "")).strip()
         if mode == "topic" and not brief:
             return self._send(400, {"error": "a topic needs a brief"})
+        if mode == "describe":
+            if not describe:
+                return self._send(400, {"error": "describe the picture"})
+            if not brief:
+                return self._send(400, {"error": "say what should move"})
 
         # Uploaded files land in the project before it starts, so the
         # paths handed to studio.main are ones it can read.
@@ -389,6 +395,8 @@ class Handler(BaseHTTPRequestHandler):
                 cmd += ["--brief", brief]
             if style:
                 cmd += ["--style", style]
+            if mode == "describe":
+                cmd += ["--describe", describe]
             if mode in ("script", "frames"):
                 script = body.get("script")
                 if not script:

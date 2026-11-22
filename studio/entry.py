@@ -20,6 +20,7 @@ Modes, by which flag was given:
     --script f.json         script   -> cast
     --script f.json --images dir/    -> clips      (pictures supplied too)
     --image p.png --brief '...'      -> clips      (animate one picture)
+    --describe '...' --brief '...'   -> cast       (draw it, then animate)
 
 Supplying a script bypasses the Cast stage's reason to exist for any
 keyframe you also supply, so cross-shot consistency becomes yours to
@@ -157,12 +158,13 @@ def _check_aspect(path, aspect, key):
 
 
 # ------------------------------------------------------------------- entry
-def prepare(project, cfg, script=None, image=None, images=None, brief=None):
+def prepare(project, cfg, script=None, image=None, images=None, brief=None,
+            describe=None):
     """Fill in whatever was supplied and mark those stages approved.
 
     Returns a line describing what was done, or None for the normal
     topic-driven run."""
-    if not (script or image):
+    if not (script or image or describe):
         return None
 
     d = cfg["defaults"]
@@ -172,8 +174,30 @@ def prepare(project, cfg, script=None, image=None, images=None, brief=None):
     kf_dir.mkdir(exist_ok=True)
     notes = []
 
+    # ---- one described picture, drawn and then animated ----------------
+    # Nothing is supplied here except words, so Images still has to run.
+    # What is skipped is Trend, Plan and Script: there is one shot and
+    # you have already said what is in it.
+    if describe and not (script or image):
+        look = describe.strip()
+        if not look:
+            raise EntryError("--describe needs a description of the picture")
+        motion = (brief or "").strip()
+        if not motion:
+            raise EntryError("--describe needs --brief as well: the "
+                             "description says what the picture IS, the "
+                             "brief says what MOVES in it")
+        data = _normalise({"shots": [{"id": "s01", "beat": look[:80],
+                                      "start_image_prompt": look,
+                                      "motion_prompt": motion,
+                                      "duration": default_seconds}]},
+                          default_seconds)
+        supplied = {}
+        notes.append(f"one described picture, drawn and then animated for "
+                     f"{default_seconds}s")
+
     # ---- one picture, animated ----------------------------------------
-    if image and not script:
+    elif image and not script:
         src = Path(image)
         if not src.exists():
             raise EntryError(f"{src} does not exist")
@@ -245,6 +269,7 @@ def prepare(project, cfg, script=None, image=None, images=None, brief=None):
         "script": str(script) if script else None,
         "image": str(image) if image else None,
         "images": str(images) if images else None,
+        "describe": describe or None,
     }
     project.save()
 

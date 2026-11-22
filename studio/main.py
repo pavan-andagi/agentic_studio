@@ -169,6 +169,9 @@ def main():
                     "keyframe to use alongside --script")
     ap.add_argument("--images", help="a folder of keyframes to use "
                     "with --script, instead of generating them")
+    ap.add_argument("--describe", help="a description of ONE picture to "
+                    "generate and then animate; needs --brief for the "
+                    "motion")
     ap.add_argument("--style",
                     help="a style profile from config.yaml styles:")
     ap.add_argument("--config", default="config.yaml")
@@ -185,9 +188,10 @@ def main():
         sys.exit("config.yaml styles:\n  " + "\n  ".join(problems))
     p = Project(cfg["projects_dir"], args.name)
     if args.command == "new":
-        if not (args.brief or args.script or args.image):
+        if not (args.brief or args.script or args.image or args.describe):
             sys.exit("give --brief (a topic), --script (a finished "
-                     "shot list), or --image (a picture to animate)")
+                     "shot list), --image (a picture to animate), or "
+                     "--describe (a picture to draw and animate)")
         p.state["inputs"]["brief"] = args.brief or ""
         # Supplying a script or a picture fills in the stages that
         # would have produced them and marks those approved, so the
@@ -195,14 +199,15 @@ def main():
         # below needs no knowledge of any of this.
         try:
             how = entry.prepare(p, cfg, args.script, args.image,
-                                args.images, args.brief)
+                                args.images, args.brief, args.describe)
         except entry.EntryError as e:
             sys.exit(f"cannot start from what you supplied: {e}")
         if how:
             print(f"[entry] {how}")
         p.save()
-    elif args.script or args.image or args.images:
-        sys.exit("--script, --image and --images are only for 'new'")
+    elif args.script or args.image or args.images or args.describe:
+        sys.exit("--script, --image, --images and --describe are only "
+                 "for 'new'")
     if args.style:
         style.load(cfg, args.style)          # raises on an unknown name
         p.state["style"] = args.style
