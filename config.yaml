@@ -27,6 +27,12 @@ comfy:
 defaults:
   aspect: "9:16"                  # 9:16 Reels/Shorts, 16:9 YouTube
   image_size: [1056, 1920]        # same 9:16 shape as the video, 1.5x larger
+  # NOTE: image_size applies to the plain text-to-image path only.
+  # The Qwen edit workflow has no width/height node - it scales the
+  # first reference picture to the nearest resolution the model
+  # supports (about 1 megapixel, e.g. 752x1392) and encodes that as
+  # the latent. That is still larger than video_size, so it is not a
+  # problem; forcing 2 MP through that model would hurt, not help.
   video_size: [704, 1280]         # LTX needs multiples of 32 (half-res pass too)
   transition: dissolve            # at hard cuts: none | dissolve | fadeblack
   transition_seconds: 0.5         # chained shots always join seamlessly

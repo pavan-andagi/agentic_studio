@@ -168,6 +168,17 @@ def generate(ctx, sh, prompt, key, i, w, h):
     first, rest = names[:cap], names[cap:]
     if not ccfg.get("multipass", False):
         rest = []                 # the others stay described in the text
+    # The edit workflow has no width/height node: it scales the FIRST
+    # reference to the nearest supported resolution and encodes that as
+    # the latent, so reference #1 decides the keyframe's shape. Character
+    # turnaround sheets are landscape, so leading with one gives a
+    # landscape keyframe for a portrait video. Stable sort, so the
+    # location-then-props-then-people order survives otherwise.
+    views = p.state.get("cast_views") or {}
+    first.sort(key=lambda n: views.get(n) == "turnaround")
+    if first and views.get(first[0]) == "turnaround":
+        print(f"  note: every reference for {key} is a turnaround sheet, "
+              f"so this keyframe takes its shape from a landscape picture")
     # the reference pictures already carry the look of `first`
     prompt = strip_locked(ctx, prompt, first)
     refs = [ctx.comfy.upload(cast[n]) for n in first]
