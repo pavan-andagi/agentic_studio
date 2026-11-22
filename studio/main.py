@@ -176,15 +176,29 @@ def main():
         sys.exit("config.yaml styles:\n  " + "\n  ".join(problems))
     p = Project(cfg["projects_dir"], args.name)
     if args.command == "new":
-        if not args.brief:
-            sys.exit("--brief is required for a new project")
-        p.state["inputs"]["brief"] = args.brief
+        if not (args.brief or args.script or args.image):
+            sys.exit("give --brief (a topic), --script (a finished "
+                     "shot list), or --image (a picture to animate)")
+        p.state["inputs"]["brief"] = args.brief or ""
+        # Supplying a script or a picture fills in the stages that
+        # would have produced them and marks those approved, so the
+        # run starts at the first stage with work left. The loop
+        # below needs no knowledge of any of this.
+        try:
+            how = entry.prepare(p, cfg, args.script, args.image,
+                                args.images, args.brief)
+        except entry.EntryError as e:
+            sys.exit(f"cannot start from what you supplied: {e}")
+        if how:
+            print(f"[entry] {how}")
         p.save()
+    elif args.script or args.image or args.images:
+        sys.exit("--script, --image and --images are only for 'new'")
     if args.style:
         style.load(cfg, args.style)          # raises on an unknown name
         p.state["style"] = args.style
         p.save()
-    if not p.state["inputs"].get("brief"):
+    if not p.state["inputs"].get("brief") and not p.state.get("entry"):
         sys.exit("No brief saved for this project; start it with 'new'.")
 
     # ---- live dashboard (browser) + console log ----
