@@ -10,10 +10,14 @@ agent's decisions, the feedback log, a timeline and the console, and it can
 answer the approval gates from the browser.
 """
 import argparse
+import base64
 import json
 import mimetypes
 import os
 import re
+import shutil
+import subprocess
+import sys
 import threading
 import time
 from email.utils import formatdate, parsedate_to_datetime
@@ -28,9 +32,47 @@ STAGES = ["trend", "plan", "script", "cast", "images", "clips",
           "finish", "render", "audio"]
 IMG = {".png", ".jpg", ".jpeg", ".webp"}
 VID = {".mp4", ".webm", ".mov"}
+# A project name becomes a directory name and a command-line argument,
+# so it is the one piece of user input here that must be boring.
+SAFE_NAME = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_-]{0,63}$")
+MAX_UPLOAD = 64 * 1024 * 1024
+RUNS = {}                      # project name -> Popen, while it lives
+
 FILES = {"trends": "1_trends.json", "chosen": "1_trend_chosen.json",
          "plan": "2_plan.json", "script": "3_script.json",
          "edit_notes": "5_edit_notes.json", "audio": "6_audio.json"}
+
+
+def read_styles(config):
+    """Style names for the form. Read on demand so editing config.yaml
+    does not need the server restarted."""
+    try:
+        import yaml
+        cfg = yaml.safe_load(Path(config).read_text())
+        return sorted(k for k in (cfg.get("styles") or {})
+                      if k != "default")
+    except Exception:                                    # noqa: BLE001
+        return []
+
+
+def _save_uploads(stage, files):
+    """[{name, data}] with base64 data -> saved paths, in order.
+
+    Names are taken apart rather than trusted: an uploaded file called
+    ../../etc/passwd is a file called passwd."""
+    stage.mkdir(parents=True, exist_ok=True)
+    out = []
+    for i, f in enumerate(files, 1):
+        raw = base64.b64decode(str(f.get("data", "")).split(",")[-1])
+        if not raw:
+            continue
+        stem = Path(str(f.get("name") or f"img{i}")).name
+        if Path(stem).suffix.lower() not in IMG:
+            stem += ".png"
+        dest = stage / stem
+        dest.write_bytes(raw)
+        out.append(dest)
+    return out
 
 
 def read_json(path, default=None):
@@ -160,6 +202,8 @@ class Handler(BaseHTTPRequestHandler):
     root = Path("projects")
     token = None
     default = None
+    cwd = Path(".")          # where a spawned run is started from
+    config = "config.yaml"
 
     def log_message(self, *a):
         pass
@@ -249,6 +293,8 @@ class Handler(BaseHTTPRequestHandler):
         if u.path in ("/", "/index.html"):
             return self._send(200, (WEB / "index.html").read_bytes(),
                               "text/html; charset=utf-8")
+        if u.path == "/api/styles":
+            return self._send(200, {"styles": read_styles(self.config)})
         if u.path == "/api/voice":
             return self._send(200, voice_caps())
         if u.path == "/api/projects":
@@ -273,6 +319,8 @@ class Handler(BaseHTTPRequestHandler):
         u = urlparse(self.path)
         if not self._authorized(parse_qs(u.query)):
             return self._send(401, {"error": "bad key"})
+        if u.path == "/api/new":
+            return self._new_run()
         if u.path == "/api/transcribe":
             return self._transcribe()
         if u.path == "/api/speak":
@@ -294,6 +342,83 @@ class Handler(BaseHTTPRequestHandler):
         os.replace(tmp, d / "response.json")
         return self._send(200, {"ok": True})
 
+
+    # ---------- starting a run ----------
+    def _new_run(self):
+        """Create a project and launch `studio.main new` for it.
+
+        The run is a child process, not a thread: it has to be able to
+        die, be killed, or finish without taking the dashboard with it.
+        That is also the shape the pipeline needs later, when a run has
+        to release its GPU at a gate and resume elsewhere."""
+        try:
+            n = int(self.headers.get("Content-Length", 0))
+            if n > MAX_UPLOAD:
+                return self._send(413, {"error": "too much data"})
+            body = json.loads(self.rfile.read(n) or b"{}")
+        except ValueError:
+            return self._send(400, {"error": "bad json"})
+
+        name = str(body.get("name", "")).strip()
+        if not SAFE_NAME.match(name):
+            return self._send(400, {"error": "the name may use letters, "
+                                    "digits, - and _ only"})
+        d = (self.root / name).resolve()
+        if not d.is_relative_to(self.root.resolve()):
+            return self._send(400, {"error": "bad name"})
+        if d.exists():
+            return self._send(409, {"error": f"{name} already exists"})
+        if any(p.poll() is None for p in RUNS.values()):
+            busy = [k for k, p in RUNS.items() if p.poll() is None]
+            return self._send(409, {"error": f"{busy[0]} is still running; "
+                                    f"one run at a time on this pod"})
+
+        brief = str(body.get("brief", "")).strip()
+        style = str(body.get("style", "")).strip()
+        mode = str(body.get("mode", "topic")).strip()
+        if mode == "topic" and not brief:
+            return self._send(400, {"error": "a topic needs a brief"})
+
+        # Uploaded files land in the project before it starts, so the
+        # paths handed to studio.main are ones it can read.
+        stage = d / "supplied"
+        try:
+            cmd = [sys.executable, "-m", "studio.main", "new", name,
+                   "--no-dashboard"]
+            if brief:
+                cmd += ["--brief", brief]
+            if style:
+                cmd += ["--style", style]
+            if mode in ("script", "frames"):
+                script = body.get("script")
+                if not script:
+                    return self._send(400, {"error": "no script supplied"})
+                stage.mkdir(parents=True, exist_ok=True)
+                f = stage / "shots.json"
+                f.write_text(str(script), encoding="utf-8")
+                cmd += ["--script", str(f)]
+            if mode in ("frames", "image"):
+                saved = _save_uploads(stage, body.get("files") or [])
+                if not saved:
+                    return self._send(400, {"error": "no pictures supplied"})
+                if mode == "image":
+                    cmd += ["--image", str(saved[0])]
+                else:
+                    cmd += ["--images", str(stage)]
+        except (OSError, ValueError) as e:
+            shutil.rmtree(d, ignore_errors=True)
+            return self._send(400, {"error": f"could not save the upload: {e}"})
+
+        try:
+            proc = subprocess.Popen(cmd, cwd=str(self.cwd),
+                                    stdout=subprocess.DEVNULL,
+                                    stderr=subprocess.STDOUT,
+                                    stdin=subprocess.DEVNULL)
+        except OSError as e:
+            shutil.rmtree(d, ignore_errors=True)
+            return self._send(500, {"error": f"could not start the run: {e}"})
+        RUNS[name] = proc
+        return self._send(200, {"ok": True, "project": name, "pid": proc.pid})
 
     # ---------- voice ----------
     def _body(self, limit):
@@ -353,10 +478,13 @@ def voice_caps():
     return {"stt": stt.available(), "tts": tts_available()}
 
 
-def start(root="projects", port=8765, token=None, default=None, host=None):
+def start(root="projects", port=8765, token=None, default=None,
+          host=None, config="config.yaml"):
     """Start the dashboard in a background thread; returns the server."""
     handler = type("H", (Handler,), {"root": Path(root), "token": token,
-                                     "default": default})
+                                     "default": default,
+                                     "cwd": Path.cwd(),
+                                     "config": config})
     host = host or ("0.0.0.0" if token else "127.0.0.1")
     try:
         srv = ThreadingHTTPServer((host, port), handler)
@@ -379,6 +507,7 @@ def main():
     ap = argparse.ArgumentParser(description="Studio dashboard")
     ap.add_argument("--root", default="projects")
     ap.add_argument("--port", type=int, default=8765)
+    ap.add_argument("--config", default="config.yaml")
     ap.add_argument("--demo", action="store_true",
                     help="create and show a sample project")
     a = ap.parse_args()
@@ -387,7 +516,8 @@ def main():
         from .demo_project import make_demo
         default = make_demo(a.root)
     srv = start(a.root, a.port, os.environ.get("STUDIO_DASH_TOKEN") or None,
-                default)
+                default, config=a.config)
+    print("[dashboard] standalone: you can start runs from the browser")
     if srv is None:
         return
     try:

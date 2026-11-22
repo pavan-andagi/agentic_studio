@@ -53,6 +53,18 @@ main{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:18px;pad
 /* Cost tab. The GPU is the only thing here that costs money by the
    second, so it gets its own column and the idle figure sits next to
    it rather than under it. */
+/* Start a run from the page. Only reachable when the dashboard is the
+   long-lived server rather than a thread inside a run. */
+.newp{position:fixed;inset:0;background:rgba(0,0,0,.6);z-index:50;display:flex;align-items:flex-start;justify-content:center;padding:40px 16px;overflow:auto}
+.newb{background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:18px;width:min(560px,100%)}
+.newb h3{margin:0 0 4px;font:600 15px system-ui;color:var(--tx)}
+.newb label{display:block;font-size:12px;color:var(--dim);margin:12px 0 4px}
+.newb input[type=text],.newb textarea,.newb select{width:100%;background:var(--panel2);border:1px solid var(--line);border-radius:8px;color:var(--tx);padding:8px 10px;font:13px/1.45 inherit}
+.newb textarea{min-height:120px;resize:vertical}
+.modes{display:flex;flex-wrap:wrap;gap:6px;margin-top:4px}
+.modes button{font-size:12px}
+.modes button.on{background:var(--ag);border-color:var(--ag);color:#fff}
+.newerr{color:var(--am);font-size:12px;margin-top:10px}
 .kpis{display:flex;flex-wrap:wrap;gap:10px;margin:2px 0 14px}
 .kpi{flex:1 1 130px;background:var(--panel2);border:1px solid var(--line);border-radius:10px;padding:10px 12px}
 .kpi b{display:block;font:600 22px/1.15 system-ui;color:var(--tx);font-variant-numeric:tabular-nums}
@@ -281,7 +293,7 @@ button.mic:disabled,button.spk:disabled{opacity:.45;cursor:default}
 .vstat{font-size:12px;color:var(--amt)}.vopt{font-size:12px;color:var(--mut);display:flex;gap:5px;align-items:center}
 @keyframes blink{50%{opacity:.6}}
 </style></head><body>
-<header><h1>Agentic AI video studio</h1><select id="proj" title="Project"></select><span class="vsw"><button data-view="flow" id="vFlow" class="on">Flow</button><button data-view="comm" id="vComm">Communication</button></span><span id="chip" class="chip">loading…</span><span id="meta" style="color:var(--dim);font-size:12px"></span><label class="vopt" title="Chime and show a desktop notification when a stage needs you"><input type="checkbox" id="vAlert"> alert me when it needs me</label><label class="vopt" title="Read each new question aloud when it appears"><input type="checkbox" id="vAuto"> read new questions aloud</label></header>
+<header><h1>Agentic AI video studio</h1><select id="proj" title="Project"></select><button data-newopen="1" title="Start a new run from here">+ New run</button><span class="vsw"><button data-view="flow" id="vFlow" class="on">Flow</button><button data-view="comm" id="vComm">Communication</button></span><span id="chip" class="chip">loading…</span><span id="meta" style="color:var(--dim);font-size:12px"></span><label class="vopt" title="Chime and show a desktop notification when a stage needs you"><input type="checkbox" id="vAlert"> alert me when it needs me</label><label class="vopt" title="Read each new question aloud when it appears"><input type="checkbox" id="vAuto"> read new questions aloud</label></header>
 <main id="mainview">
  <section><div class="panel"><div id="flow"></div></div></section>
  <section class="panel"><div id="head"></div><div id="tabs" class="tabs"></div><div id="body"></div></section>
@@ -295,6 +307,7 @@ button.mic:disabled,button.spk:disabled{opacity:.45;cursor:default}
  </div>
  <div id="cdetail"></div>
 </div>
+<div id="modal"></div>
 <script>
 var KEY=(typeof location!=='undefined'&&new URLSearchParams(location.search).get('key'))||null;
 function q(p){return KEY?p+(p.indexOf('?')>=0?'&':'?')+'key='+encodeURIComponent(KEY):p}
@@ -951,6 +964,43 @@ function renderFeedback(d,id){var l=(d.state.feedback_log||[]).filter(function(e
  return'<label class="m"><input type="checkbox" data-allfb="1"'+(allFb?' checked':'')+'> show all stages</label>'+(l.length?l.map(function(e){return'<div class="ev"><span class="m">'+esc(e.time)+'</span><span class="tag '+(e.source==='master'?'master_decision':'human_feedback')+'">'+esc(e.source)+'</span><span>'+esc(e.stage)+': '+esc(e.text)+'</span></div>'}).join(''):empty('No feedback recorded for this stage yet.'))}
 function hms(s){s=Math.round(s);var h=Math.floor(s/3600),m=Math.floor(s%3600/60);
  return h?h+'h '+('0'+m).slice(-2)+'m':(m?m+'m '+('0'+(s%60)).slice(-2)+'s':s+'s')}
+var NEW=null;   // null = closed, otherwise the form's current state
+var MODES=[['topic','Topic','a brief; the studio writes everything'],
+ ['script','Script','a finished shot list (JSON); keyframes generated'],
+ ['frames','Script + pictures','a shot list and your own keyframes'],
+ ['image','One picture','animate a single image']];
+function renderNew(){if(!NEW)return '';
+ var m=NEW.mode,needsScript=(m==='script'||m==='frames'),
+     needsPics=(m==='frames'||m==='image');
+ return'<div class="newp" data-newbg="1"><div class="newb">'
+ +'<h3>New run</h3><div class="m">The run starts as its own process, so this page keeps working while it goes.</div>'
+ +'<label>What are you starting from</label><div class="modes">'
+ +MODES.map(function(x){return'<button data-mode="'+x[0]+'" class="'
+  +(m===x[0]?'on':'')+'" title="'+esc(x[2])+'">'+esc(x[1])+'</button>'}).join('')
+ +'</div><div class="m" style="margin-top:6px">'
+ +esc((MODES.filter(function(x){return x[0]===m})[0]||[])[2]||'')+'</div>'
+ +'<label>Project name</label><input type="text" id="nm" value="'
+ +esc(NEW.name)+'" placeholder="letters, digits, - and _">'
+ +'<label>'+(m==='image'?'What should move':'Brief')
+ +(m==='script'||m==='frames'?' (optional)':'')+'</label>'
+ +'<textarea id="bf" placeholder="'
+ +(m==='image'?'slow push in, the lantern flickers'
+  :'A 15-second narrated short ...')+'">'+esc(NEW.brief)+'</textarea>'
+ +'<label>Style</label><select id="sy"><option value="">(config default)</option>'+(NEW.styles||[]).map(function(x){return'<option'
+  +(NEW.style===x?' selected':'')+'>'+esc(x)+'</option>'}).join('')+'</select>'
+ +(needsScript?'<label>Shot list (JSON)</label><textarea id="sc" placeholder=\'{"shots": [{"id": "s01", "motion_prompt": "..."}]}\'>'
+  +esc(NEW.script||'')+'</textarea>':'')
+ +(needsPics?'<label>'+(m==='image'?'Picture':'Keyframes')+'</label>'
+  +'<input type="file" id="fs" accept="image/*"'
+  +(m==='image'?'':' multiple')+'>'
+  +'<div class="m">'+(NEW.files.length?NEW.files.length+' selected: '
+   +esc(NEW.files.map(function(f){return f.name}).join(', ')):'none yet')
+  +'</div>':'')
+ +(NEW.err?'<div class="newerr">'+esc(NEW.err)+'</div>':'')
+ +'<div class="row" style="margin-top:14px">'
+ +'<button class="ok" data-start="1"'+(NEW.busy?' disabled':'')+'>'
+ +(NEW.busy?'Starting\u2026':'Start the run')+'</button>'
+ +'<button data-newclose="1">Cancel</button></div></div></div>'}
 function renderCost(d){var c=d.cost;
  if(!c)return empty('No GPU samples yet. Sampling starts with the run; if this stays empty, nvidia-smi is not available or gpu.enabled is off in config.yaml.');
  var k=[['GPU busy',hms(c.busy),c.busy_pct+'% of the run',''],
@@ -1231,7 +1281,54 @@ function send(text){var p=data&&data.pending;if(!p)return;
    return post(cur.id,text)})
   .catch(function(){offline(true)})}
 function redraw(){lastSig=null;render()}
-function onClick(e){var t=e.target.closest('[data-bub],[data-mic],[data-speak],[data-autosend],[data-ans],[data-send],[data-tab],[data-follow],[data-allfb],[data-stage],[data-view],[data-msg]');if(!t)return;
+function newOpen(){NEW={mode:'topic',name:'',brief:'',style:'',script:'',
+  files:[],styles:(NEW&&NEW.styles)||[],err:'',busy:false};
+ fetch(q('/api/styles')).then(function(r){return r.json()})
+  .then(function(j){if(NEW){NEW.styles=j.styles||[];paintNew()}})
+  .catch(function(){});paintNew()}
+function newRead(){if(!NEW)return;
+ var g=function(id){var e=document.getElementById(id);return e?e.value:''};
+ NEW.name=g('nm');NEW.brief=g('bf');NEW.style=g('sy');
+ if(document.getElementById('sc'))NEW.script=g('sc')}
+function paintNew(){document.getElementById('modal').innerHTML=renderNew();
+ var f=document.getElementById('fs');
+ if(f)f.onchange=function(){var list=[].slice.call(f.files),out=[],left=list.length;
+  if(!left)return;
+  list.forEach(function(file,i){var rd=new FileReader();
+   rd.onload=function(){out[i]={name:file.name,data:String(rd.result)};
+    if(--left===0){newRead();NEW.files=out.filter(Boolean);paintNew()}};
+   rd.onerror=function(){if(--left===0){newRead();NEW.files=out.filter(Boolean);paintNew()}};
+   rd.readAsDataURL(file)})}}
+function newStart(){newRead();NEW.err='';
+ if(!/^[A-Za-z0-9][A-Za-z0-9_-]{0,63}$/.test(NEW.name)){
+  NEW.err='The name may use letters, digits, - and _ only.';return paintNew()}
+ if(NEW.mode==='topic'&&!NEW.brief.trim()){
+  NEW.err='A topic needs a brief.';return paintNew()}
+ if((NEW.mode==='script'||NEW.mode==='frames')&&!NEW.script.trim()){
+  NEW.err='Paste the shot list.';return paintNew()}
+ if(NEW.mode!=='topic'&&NEW.mode!=='script'&&!NEW.files.length){
+  NEW.err='Choose at least one picture.';return paintNew()}
+ if(NEW.mode==='image'&&!NEW.brief.trim()){
+  NEW.err='Say what should move.';return paintNew()}
+ NEW.busy=true;paintNew();
+ fetch(q('/api/new'),{method:'POST',
+  headers:{'Content-Type':'application/json'},
+  body:JSON.stringify({name:NEW.name,mode:NEW.mode,brief:NEW.brief,
+   style:NEW.style,script:NEW.script,files:NEW.files})})
+  .then(function(r){return r.json().then(function(j){return[r.ok,j]})})
+  .then(function(x){if(!x[0]){NEW.busy=false;
+    NEW.err=(x[1]&&x[1].error)||'could not start the run';return paintNew()}
+   var nm=x[1].project;NEW=null;paintNew();
+   projManual=true;proj=nm;lastSig=null;
+   setTimeout(function(){load()},900)})
+  .catch(function(){NEW.busy=false;
+   NEW.err='the dashboard could not be reached';paintNew()})}
+function onClick(e){var t=e.target.closest('[data-newopen],[data-newclose],[data-mode],[data-start],[data-bub],[data-mic],[data-speak],[data-autosend],[data-ans],[data-send],[data-tab],[data-follow],[data-allfb],[data-stage],[data-view],[data-msg]');if(!t)return;
+ if(t.dataset.newopen!==undefined){newOpen();return}
+ if(t.dataset.newclose!==undefined){NEW=null;paintNew();return}
+ if(t.dataset.mode!==undefined){newRead();NEW.mode=t.dataset.mode;
+  NEW.err='';paintNew();return}
+ if(t.dataset.start!==undefined){newStart();return}
  if(t.dataset.bub!==undefined){var b=String(t.dataset.bub).split(':');
   if(b.length===1){                       // a subject: open or close it
    bubOpen=(bubOpen===b[0]?null:b[0]);bubPick=null;bubManual=true}

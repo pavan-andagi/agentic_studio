@@ -166,6 +166,9 @@ def main():
     ap.add_argument("--style",
                     help="a style profile from config.yaml styles:")
     ap.add_argument("--config", default="config.yaml")
+    ap.add_argument("--no-dashboard", action="store_true",
+                    help="do not serve a dashboard from this process "
+                    "(used when a standalone dashboard spawned it)")
     args = ap.parse_args()
 
     cfg = yaml.safe_load(Path(args.config).read_text())
@@ -216,8 +219,11 @@ def main():
         gpumon.start(p.dir, gcfg.get("every_seconds", 5))
         print(f"[gpu] sampling every {gcfg.get('every_seconds', 5)}s "
               f"-> {p.dir / 'gpu.csv'}")
-    if dcfg.get("enabled", True):
-        enable_web(p)
+    serve = dcfg.get("enabled", True) and not args.no_dashboard
+    # The gate files are how the browser answers, so they are written
+    # whether or not THIS process is the one serving the page.
+    enable_web(p)
+    if serve:
         dashboard.start(cfg["projects_dir"], dcfg.get("port", 8765),
                         os.environ.get("STUDIO_DASH_TOKEN") or dcfg.get("token") or None,
                         default=args.name)
@@ -260,7 +266,7 @@ def main():
     # here would kill it and leave the browser frozen on the last question
     # it saw - which looks like the pipeline hung at the final gate.
     # Stay alive so the finished project stays browsable.
-    if dcfg.get("enabled", True) and dcfg.get("stay_open", True):
+    if serve and dcfg.get("stay_open", True):
         port = dcfg.get("port", 8765)
         print(f"\nDashboard still serving on port {port} - the run is "
               f"finished.\nPress Ctrl-C when you are done looking at it.")
