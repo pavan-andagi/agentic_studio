@@ -386,6 +386,15 @@ class Handler(BaseHTTPRequestHandler):
             if not brief:
                 return self._send(400, {"error": "say what should move"})
 
+        # The project directory has to exist before anything is written
+        # into it - including spawn.log, which is written even when there
+        # is nothing to upload. Only the modes that save a file used to
+        # create it, so topic and describe died here with ENOENT.
+        try:
+            d.mkdir(parents=True, exist_ok=True)
+        except OSError as e:
+            return self._send(500, {"error": f"could not create {name}: {e}"})
+
         # Uploaded files land in the project before it starts, so the
         # paths handed to studio.main are ones it can read.
         stage = d / "supplied"
