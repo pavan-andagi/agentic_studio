@@ -108,6 +108,10 @@ svg{width:100%;height:auto;display:block}
    Where a run came in. Four ways to start, each wired to the stage it
    lands on; the one this run used is lit, the rest sit back as a map of
    what else was possible. */
+/* A stage this run was told not to reach. Still drawn: what was left
+   out is part of knowing what you have. */
+.node.cut{opacity:.32}
+.node.cut .bb{stroke-dasharray:4 4}
 .ent .eb{fill:#191816;stroke:#353431;stroke-width:1.1}
 .ent .eac{fill:#353431}
 .ent .ebt{font-size:12.5px;font-weight:600;fill:#86847b}
@@ -341,6 +345,18 @@ function cut(s,n){s=String(s==null?'':s);return s.length>n?s.slice(0,n-1)+'…':
 function wrap(text,n,max){var w=String(text||'').split(/\s+/),lines=[],cur='';w.forEach(function(x){if((cur+' '+x).trim().length>n){lines.push(cur);cur=x}else cur=(cur+' '+x).trim()});if(cur)lines.push(cur);if(lines.length>max){lines=lines.slice(0,max);lines[max-1]=cut(lines[max-1]+'…',n)}return lines}
 function ago(s){s=Math.max(0,Math.round(s));return s<60?s+'s':s<3600?Math.floor(s/60)+'m '+(s%60)+'s':Math.floor(s/3600)+'h '+Math.floor(s%3600/60)+'m'}
 function clock(t){var d=new Date(t*1000);return d.toTimeString().slice(0,8)}
+/* Where a run may be told to end. Everything up to Clips makes the
+   video; the three stages after it are passes over a video that
+   already exists, and not every video wants them. */
+var STOPS=[
+ ['clips', 'Clips - the finished video',
+  'Animated and assembled. No look pass, no titles, no sound.'],
+ ['finish','Finish - with the look applied',
+  'The style filters are imposed on the clips, then joined again.'],
+ ['render','Overlays - with titles and captions',
+  'Text drawn in code over the graded clips.'],
+ ['audio', 'Audio - everything (default)',
+  'Narration, music and ambience mixed under the video.']];
 var ST=[
  {id:'trend',n:'1 Trend identifier',s:'Claude + web search',desc:'Finds what is trending now and ranks ideas for your channel.'},
  {id:'plan',n:'2 Project planner',s:'Style, characters, beats',desc:'Writes the production plan and locks the look and characters.'},
@@ -808,6 +824,8 @@ function renderFlow(d,sel){
  var NS=ST.filter(function(s){return s.id!=='final'}).length,H=86,out=[],
      cur=d.state.current||{},live=cur.stage,pend=d.pending,
      ent=d.state.entry||{},entAt=ent.at||'trend',
+     stop=d.state.stop_after||'',
+     stopAt=stop?ST.map(function(x){return x.id}).indexOf(stop):-1,
      Y=function(i){return 56+i*120};
  // The margin to the left of x=0 is where the entry column lives, so
  // every existing coordinate stays exactly where it was.
@@ -858,6 +876,7 @@ function renderFlow(d,sel){
   // Only whoever is working stays awake. Finished crew doze like the
   // ones who have not started; the bubble colour still says approved.
   var asleep=st!=='active';
+  if(stopAt>=0&&i>stopAt)st+=' cut';
   var ein=ENTRY.filter(function(x){return x.at===s.id})[0];
   if(ein)out.push(entryBox(y,H,ein,entAt===s.id,'this run',''));
   out.push('<g class="node '+st+(asleep?' asleep':'')+(sel===s.id?' sel':'')
@@ -890,6 +909,9 @@ function renderFlow(d,sel){
 
  var fs=stageStatus(d,'final'),fy=Y(NS),fz=true;   // the reel never works
  // The way out. One box, lit once there is actually a file.
+ if(stopAt>=0&&stopAt<NS-1){
+  out.push(entryBox(Y(stopAt),H,{n:'Run ends here',
+    s:'nothing after this runs'},true,'exit','out'))}
  out.push(entryBox(fy-6,80,{n:'Final video',
    s:(d.final&&d.final.length)?'ready to download':'when every stage is done'},
    !!(d.final&&d.final.length),'delivered','out'));
@@ -1046,6 +1068,11 @@ function renderNew(){if(!NEW)return '';
  +'<textarea id="bf" placeholder="'
  +(m==='image'||m==='describe'?'slow push in, the lantern flickers'
   :'A 15-second narrated short ...')+'">'+esc(NEW.brief)+'</textarea>'
+ +'<label>Stop after</label><select id="un">'+STOPS.map(function(x){
+   return '<option value="'+x[0]+'"'+(NEW.until===x[0]?' selected':'')+'>'
+    +esc(x[1])+'</option>'}).join('')+'</select>'
+ +'<div class="hint">'+esc((STOPS.filter(function(x){
+    return x[0]===NEW.until})[0]||['','',''])[2])+'</div>'
  +'<label>Style</label><select id="sy"><option value="">(config default)</option>'+(NEW.styles||[]).map(function(x){return'<option'
   +(NEW.style===x?' selected':'')+'>'+esc(x)+'</option>'}).join('')+'</select>'
  +(needsScript?'<label>Shot list (JSON)</label><textarea id="sc" placeholder=\'{"shots": [{"id": "s01", "motion_prompt": "..."}]}\'>'
@@ -1341,7 +1368,7 @@ function send(text){var p=data&&data.pending;if(!p)return;
    return post(cur.id,text)})
   .catch(function(){offline(true)})}
 function redraw(){lastSig=null;render()}
-function newOpen(){NEW={mode:'topic',name:'',brief:'',style:'',script:'',describe:'',
+function newOpen(){NEW={mode:'topic',name:'',brief:'',style:'',script:'',describe:'',until:'audio',
   files:[],styles:(NEW&&NEW.styles)||[],err:'',busy:false};
  fetch(q('/api/styles')).then(function(r){return r.json()})
   .then(function(j){if(NEW){NEW.styles=j.styles||[];paintNew()}})
@@ -1350,7 +1377,8 @@ function newRead(){if(!NEW)return;
  var g=function(id){var e=document.getElementById(id);return e?e.value:''};
  NEW.name=g('nm');NEW.brief=g('bf');NEW.style=g('sy');
  if(document.getElementById('sc'))NEW.script=g('sc');
- if(document.getElementById('dc'))NEW.describe=g('dc')}
+ if(document.getElementById('dc'))NEW.describe=g('dc');
+ if(document.getElementById('un'))NEW.until=g('un')}
 function paintNew(){document.getElementById('modal').innerHTML=renderNew();
  var f=document.getElementById('fs');
  if(f)f.onchange=function(){var list=[].slice.call(f.files),out=[],left=list.length;
@@ -1379,7 +1407,7 @@ function newStart(){newRead();NEW.err='';
   headers:{'Content-Type':'application/json'},
   body:JSON.stringify({name:NEW.name,mode:NEW.mode,brief:NEW.brief,
    style:NEW.style,script:NEW.script,describe:NEW.describe,
-   files:NEW.files})})
+   until:NEW.until,files:NEW.files})})
   .then(function(r){return r.json().then(function(j){return[r.ok,j]})})
   .then(function(x){if(!x[0]){NEW.busy=false;
     NEW.err=((x[1]&&x[1].error)||'could not start the run')

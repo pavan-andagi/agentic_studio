@@ -128,8 +128,13 @@ def run(ctx, feedback=None, items=None):
     # only do it here when Render is not in the pipeline or is switched off.
     patch = {"finished": dict(done), "finished_marks": dict(marks)}
     final = None
+    # A run told to stop after this stage has no Render coming, whatever
+    # STAGES says, so the graded clips have to be joined here or the
+    # project ends with a final video that has no look applied.
+    stop = ctx.project.state.get("stop_after")
     render_next = ("render" in STAGES
-                   and (cfg.get("render") or {}).get("enabled", True))
+                   and (cfg.get("render") or {}).get("enabled", True)
+                   and stop != "finish")
     if not render_next:
         final = compose.reassemble(ctx, done)
         if final:

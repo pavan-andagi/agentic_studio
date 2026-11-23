@@ -177,7 +177,7 @@ def project_data(root, name):
     data = {
         "name": name, "state": {k: st.get(k) for k in (
             "approved", "inputs", "current", "feedback_log", "guidance",
-            "entry")},
+            "entry", "stop_after")},
         "run": {"alive": is_alive, "pid": run_pid,
                 "started": (st.get("run") or {}).get("started")},
         "files": {k: read_json(d / f) for k, f in FILES.items()},
@@ -378,6 +378,9 @@ class Handler(BaseHTTPRequestHandler):
         style = str(body.get("style", "")).strip()
         mode = str(body.get("mode", "topic")).strip()
         describe = str(body.get("describe", "")).strip()
+        until = str(body.get("until", "")).strip()
+        if until and until not in STAGES:
+            return self._send(400, {"error": f"no stage called {until}"})
         if mode == "topic" and not brief:
             return self._send(400, {"error": "a topic needs a brief"})
         if mode == "describe":
@@ -405,6 +408,8 @@ class Handler(BaseHTTPRequestHandler):
                 cmd += ["--brief", brief]
             if style:
                 cmd += ["--style", style]
+            if until and until != STAGES[-1]:
+                cmd += ["--until", until]
             if mode == "describe":
                 cmd += ["--describe", describe]
             if mode in ("script", "frames"):

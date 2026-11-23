@@ -172,6 +172,9 @@ def main():
     ap.add_argument("--describe", help="a description of ONE picture to "
                     "generate and then animate; needs --brief for the "
                     "motion")
+    ap.add_argument("--until", metavar="STAGE", choices=STAGES,
+                    help="stop after this stage instead of running the "
+                    f"whole pipeline. One of: {', '.join(STAGES)}")
     ap.add_argument("--style",
                     help="a style profile from config.yaml styles:")
     ap.add_argument("--config", default="config.yaml")
@@ -208,6 +211,12 @@ def main():
     elif args.script or args.image or args.images or args.describe:
         sys.exit("--script, --image, --images and --describe are only "
                  "for 'new'")
+
+    # --until works on 'resume' too, so a run that stopped after Clips
+    # can be carried on to Audio later without starting again.
+    if args.until:
+        p.state["stop_after"] = args.until
+        p.save()
     if args.style:
         style.load(cfg, args.style)          # raises on an unknown name
         p.state["style"] = args.style
@@ -250,7 +259,20 @@ def main():
 
     i = next((n for n, s in enumerate(STAGES) if not p.approved(s)),
              len(STAGES))
-    while i < len(STAGES):
+
+    # Where this run is meant to end. Not every video needs a look, an
+    # overlay pass and a soundtrack, and the stages after the stop are
+    # left unapproved rather than skipped - so a later `resume --until`
+    # with a later stage picks up exactly where this one left off.
+    stop = p.state.get("stop_after")
+    limit = (STAGES.index(stop) + 1) if stop in STAGES else len(STAGES)
+    if i < limit < len(STAGES):
+        print(f"\n  This run stops after {stage_name(limit - 1).upper()}. "
+              f"Remaining: {', '.join(STAGES[limit:])}"
+              f"\n  To carry on later:  python -m studio.main resume "
+              f"{p.dir.name} --until {STAGES[-1]}\n")
+
+    while i < limit:
         stage = STAGES[i]
         if needs_comfy(cfg, stage) and not comfy.alive():
             sys.exit(f"ComfyUI is not reachable at {cfg['comfy']['url']}. "
@@ -265,6 +287,18 @@ def main():
         p.event(target, "rewind", fb, frm=stage_name(i), items=items or [])
         p.rewind(target, items, fb)
         i = STAGES.index(target)
+
+    if limit < len(STAGES):
+        p.set_status(None, "done", f"Stopped after {stage_name(limit - 1)}")
+        p.event(STAGES[limit - 1], "done",
+                f"Run stopped here as asked. Not run: "
+                f"{', '.join(STAGES[limit:])}")
+        banner(f"STOPPED AFTER {stage_name(limit - 1).upper()}")
+        print(f"The stages after this were not run: {', '.join(STAGES[limit:])}"
+              f"\nTo run them:  python -m studio.main resume {p.dir.name} "
+              f"--until {STAGES[-1]}\n")
+        print(f"Final video: {p.state.get('final') or p.dir / 'final'}")
+        return
 
     p.set_status(None, "done", "All stages approved")
     p.event("clips", "done", "Pipeline finished")
