@@ -386,7 +386,9 @@ class Handler(BaseHTTPRequestHandler):
         if mode == "describe":
             if not describe:
                 return self._send(400, {"error": "describe the picture"})
-            if not brief:
+            # Only a run that goes on to animate the picture needs to be
+            # told what moves. Pictures only, and there is no motion.
+            if not brief and until != "images":
                 return self._send(400, {"error": "say what should move"})
 
         # The project directory has to exist before anything is written
