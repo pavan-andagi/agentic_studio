@@ -355,6 +355,9 @@ function clock(t){var d=new Date(t*1000);return d.toTimeString().slice(0,8)}
    video; the three stages after it are passes over a video that
    already exists, and not every video wants them. */
 var STOPS=[
+ ['images','Image creation - pictures only',
+  'No video at all. The keyframes are generated and you pick them; '
+  +'nothing is animated.'],
  ['clips', 'Clips - the finished video',
   'Animated and assembled. No look pass, no titles, no sound.'],
  ['finish','Finish - with the look applied',
@@ -1074,24 +1077,33 @@ var MODES=[['topic','Topic','a brief; the studio writes everything'],
  ['image','One picture','animate a single image'],
  ['describe','Describe a picture','the studio draws it, then animates it']];
 function renderNew(){if(!NEW)return '';
+ // Picking a mode changes what the obvious stop point is: somebody who
+ // described a picture most likely wants the picture.
+ if(NEW.mode!==NEW._lastMode){
+  NEW.until=(NEW.mode==='describe')?'images':'audio';
+  NEW._lastMode=NEW.mode}
  var m=NEW.mode,needsScript=(m==='script'||m==='frames'),
-     needsPics=(m==='frames'||m==='image'),needsLook=(m==='describe');
+     needsPics=(m==='frames'||m==='image'),needsLook=(m==='describe'),
+     // Nothing is animated, so there is nothing to say about movement.
+     stillOnly=(NEW.until==='images');
  return'<div class="newp" data-newbg="1"><div class="newb">'
  +'<h3>New run</h3><div class="m">The run starts as its own process, so this page keeps working while it goes.</div>'
  +'<label>What are you starting from</label><div class="modes">'
  +MODES.map(function(x){return'<button data-mode="'+x[0]+'" class="'
   +(m===x[0]?'on':'')+'" title="'+esc(x[2])+'">'+esc(x[1])+'</button>'}).join('')
  +'</div><div class="m" style="margin-top:6px">'
- +esc((MODES.filter(function(x){return x[0]===m})[0]||[])[2]||'')+'</div>'
+ +esc((m==='describe'&&stillOnly)?'the studio draws it; nothing is animated'
+   :((MODES.filter(function(x){return x[0]===m})[0]||[])[2]||''))+'</div>'
  +'<label>Project name</label><input type="text" id="nm" value="'
  +esc(NEW.name)+'" placeholder="letters, digits, - and _">'
  +(needsLook?'<label>What the picture shows</label><textarea id="dc" placeholder="a supermassive black hole seen edge on, orange accretion disk, dust lanes, deep space behind">'
   +esc(NEW.describe||'')+'</textarea>':'')
- +'<label>'+(m==='image'||m==='describe'?'What should move':'Brief')
+ +((needsLook&&stillOnly)?'':
+   '<label>'+(m==='image'||m==='describe'?'What should move':'Brief')
  +(m==='script'||m==='frames'?' (optional)':'')+'</label>'
  +'<textarea id="bf" placeholder="'
  +(m==='image'||m==='describe'?'slow push in, the lantern flickers'
-  :'A 15-second narrated short ...')+'">'+esc(NEW.brief)+'</textarea>'
+  :'A 15-second narrated short ...')+'">'+esc(NEW.brief)+'</textarea>')
  +'<label>Stop after</label><select id="un">'+STOPS.map(function(x){
    return '<option value="'+x[0]+'"'+(NEW.until===x[0]?' selected':'')+'>'
     +esc(x[1])+'</option>'}).join('')+'</select>'
@@ -1424,8 +1436,11 @@ function newStart(){newRead();NEW.err='';
  if(NEW.mode!=='topic'&&NEW.mode!=='script'&&NEW.mode!=='describe'
     &&!NEW.files.length){
   NEW.err='Choose at least one picture.';return paintNew()}
- if((NEW.mode==='image'||NEW.mode==='describe')&&!NEW.brief.trim()){
+ if(NEW.mode==='image'&&!NEW.brief.trim()){
   NEW.err='Say what should move.';return paintNew()}
+ if(NEW.mode==='describe'&&NEW.until!=='images'&&!NEW.brief.trim()){
+  NEW.err='Say what should move, or set Stop after to pictures only.';
+  return paintNew()}
  NEW.busy=true;paintNew();
  fetch(q('/api/new'),{method:'POST',
   headers:{'Content-Type':'application/json'},

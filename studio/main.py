@@ -297,7 +297,12 @@ def main():
         print(f"The stages after this were not run: {', '.join(STAGES[limit:])}"
               f"\nTo run them:  python -m studio.main resume {p.dir.name} "
               f"--until {STAGES[-1]}\n")
-        print(f"Final video: {p.state.get('final') or p.dir / 'final'}")
+        if STAGES.index(STAGES[limit - 1]) >= STAGES.index("clips"):
+            print(f"Final video: {p.state.get('final') or p.dir / 'final'}")
+        else:
+            print(f"Pictures: {p.dir / 'keyframes'}"
+                  f"\nNothing was animated - this run was asked to stop "
+                  f"before Clips.")
         return
 
     p.set_status(None, "done", "All stages approved")

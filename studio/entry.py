@@ -182,18 +182,18 @@ def prepare(project, cfg, script=None, image=None, images=None, brief=None,
         look = describe.strip()
         if not look:
             raise EntryError("--describe needs a description of the picture")
+        # The motion is only needed if the run goes on to animate the
+        # picture. Asked for pictures alone, there is nothing to move,
+        # and demanding a sentence about movement would be busywork.
         motion = (brief or "").strip()
-        if not motion:
-            raise EntryError("--describe needs --brief as well: the "
-                             "description says what the picture IS, the "
-                             "brief says what MOVES in it")
         data = _normalise({"shots": [{"id": "s01", "beat": look[:80],
                                       "start_image_prompt": look,
                                       "motion_prompt": motion,
                                       "duration": default_seconds}]},
                           default_seconds)
         supplied = {}
-        notes.append(f"one described picture, drawn and then animated for "
+        notes.append("one described picture" if not motion else
+                     f"one described picture, drawn and then animated for "
                      f"{default_seconds}s")
 
     # ---- one picture, animated ----------------------------------------
