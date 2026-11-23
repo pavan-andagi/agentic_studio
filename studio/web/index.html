@@ -110,6 +110,12 @@ svg{width:100%;height:auto;display:block}
    what else was possible. */
 /* A stage this run was told not to reach. Still drawn: what was left
    out is part of knowing what you have. */
+/* Filled in from what you supplied. Neither done nor waiting: it never
+   happened, and the board should not imply otherwise. */
+.node.skip .pan{fill:#1a1a1d;stroke:#4a4760;stroke-dasharray:5 4}
+.node.skip .t{fill:#7e7b92}
+.node.skip .s{fill:#625f73;font-style:italic}
+.node.skip{opacity:.72}
 .node.cut{opacity:.32}
 .node.cut .bb{stroke-dasharray:4 4}
 .ent .eb{fill:#191816;stroke:#353431;stroke-width:1.1}
@@ -370,8 +376,14 @@ var ST=[
  {id:'final',n:'Final video',s:'Edit notes, captions',desc:'The assembled video, editing suggestions and captions.'}];
 function stageName(id){var s=ST.filter(function(x){return x.id===id})[0];return s?s.n:(id||'')}
 function needed(d){var sc=d.files.script,out=[];if(!sc||!sc.shots)return out;sc.shots.forEach(function(s){if(s.start_from==='new_keyframe'&&s.start_image_prompt)out.push({key:s.id+'_start',shot:s});if(s.mode==='flf2v'&&s.end_image_prompt)out.push({key:s.id+'_end',shot:s})});return out}
+/* Marked approved by entry.prepare() because its output was supplied,
+   not because it ran. Calling that "Reviewed" is a lie the board used to
+   tell. */
+function skipped(d,id){
+ return ((d.state.entry||{}).skipped||[]).indexOf(id)>=0 && !(d.state.ran||{})[id]}
 function stageStatus(d,id){var ap=(d.state.approved||{}),c=d.state.current||{};
  if(id==='final')return ap.audio?'done':'pending';
+ if(skipped(d,id))return 'skip';
  if(ap[id])return 'done';
  if(c.stage===id){if(c.status==='waiting')return 'review';if(c.status==='working'||c.status==='master')return 'active'}
  return 'pending'}
@@ -806,8 +818,10 @@ var ENTRY=[{at:'trend', n:'Topic',       s:'a brief, nothing else'},
            {at:'clips', n:'Pictures',    s:'your own keyframes'}];
 /* box: 150 wide, sitting in the margin to the left of the stations,
    with a 3px accent on its leading edge and a wire into the rail. */
-function entryBox(y,h,e,on,tag,cls){
- var bh=42,by=y+(h-bh)/2,bx=-186,bw=150,mid=by+bh/2;
+function entryBox(y,h,e,on,tag,cls,slot){
+ var bh=42,by=y+(h-bh)/2,bx=-186,bw=150;
+ if(slot==='top')by-=27; else if(slot==='bottom')by+=27;
+ var mid=by+bh/2;
  return'<g class="ent'+(on?' on':'')+(cls?' '+cls:'')+'">'
   +'<path class="elink" d="M'+(bx+bw)+' '+mid+'H34"/>'
   +'<circle class="edot" cx="30" cy="'+mid+'" r="3"/>'
@@ -817,7 +831,10 @@ function entryBox(y,h,e,on,tag,cls){
    +'" rx="1.5"/>'
   +'<text class="ebt" x="'+(bx+14)+'" y="'+(by+19)+'">'+esc(e.n)+'</text>'
   +'<text class="ebs" x="'+(bx+14)+'" y="'+(by+34)+'">'+esc(e.s)+'</text>'
-  +(on&&tag?'<text class="etag" x="'+(bx+bw)+'" y="'+(by-6)
+  // Stacked boxes: the lower one puts its tag underneath, or the two
+  // labels sit on the same few pixels.
+  +(on&&tag?'<text class="etag" x="'+(bx+bw)+'" y="'
+    +(slot==='bottom'?by+bh+11:by-6)
     +'" text-anchor="end">'+esc(tag)+'</text>':'')
   +'</g>'}
 function renderFlow(d,sel){
@@ -877,19 +894,29 @@ function renderFlow(d,sel){
   // ones who have not started; the bubble colour still says approved.
   var asleep=st!=='active';
   if(stopAt>=0&&i>stopAt)st+=' cut';
-  var ein=ENTRY.filter(function(x){return x.at===s.id})[0];
-  if(ein)out.push(entryBox(y,H,ein,entAt===s.id,'this run',''));
+  var isSkip=st.indexOf('skip')===0;
+  if(isSkip)sub='supplied, so this did not run';
+  var showSub=(!asleep)||isSkip;
+  var ein=ENTRY.filter(function(x){return x.at===s.id})[0],
+      eout=(stopAt===i&&stopAt<NS-1),
+      slot=(ein&&eout)?'top':'';
+  if(ein)out.push(entryBox(y,H,ein,entAt===s.id,'this run','',slot));
+  if(eout)out.push(entryBox(y,H,{n:'Run ends here',
+    s:'nothing after this runs'},true,'exit','out',
+    (ein&&eout)?'bottom':''));
   out.push('<g class="node '+st+(asleep?' asleep':'')+(sel===s.id?' sel':'')
    +'" data-stage="'+s.id+'">'
    +hit(34,y-6,318,H+12)+(sel===s.id?halo(66,y+40):'')
    +robot(s.id,40,y+10,.92)
-   +bubble(108,y+(asleep?27:19),228,s.n,asleep?null:cut(sub,31),asleep)
+   +bubble(108,y+(showSub?19:27),228,s.n,showSub?cut(sub,31):null,asleep)
    +(rc?'<text class="badge" x="344" y="'+(y+14)+'" text-anchor="end">redone x'+rc+'</text>':'')
    +'</g>');
   // The inspector is awake only while a question is actually open, and
   // says which of the three states this review is in.
-  var rs=st==='review'?'review':(st==='done'?'done':'pending'),rz=rs!=='review',
-      rn={done:'Reviewed',review:'Reviewing',pending:'To be reviewed'}[rs];
+  var rs=st==='review'?'review':(st==='done'?'done':(st==='skip'?'skip':'pending')),
+      rz=rs!=='review',
+      rn={done:'Reviewed',review:'Reviewing',pending:'To be reviewed',
+          skip:'Nothing to review'}[rs];
   out.push('<g class="node '+rs+(rz?' asleep':'')+'" data-stage="'+s.id
    +'" data-tab="feedback">'
    +hit(386,y-6,206,H+12)+inspector(392,y+16,!rz,1.3)
@@ -909,9 +936,6 @@ function renderFlow(d,sel){
 
  var fs=stageStatus(d,'final'),fy=Y(NS),fz=true;   // the reel never works
  // The way out. One box, lit once there is actually a file.
- if(stopAt>=0&&stopAt<NS-1){
-  out.push(entryBox(Y(stopAt),H,{n:'Run ends here',
-    s:'nothing after this runs'},true,'exit','out'))}
  out.push(entryBox(fy-6,80,{n:'Final video',
    s:(d.final&&d.final.length)?'ready to download':'when every stage is done'},
    !!(d.final&&d.final.length),'delivered','out'));

@@ -250,7 +250,11 @@ def prepare(project, cfg, script=None, image=None, images=None, brief=None,
         kf[key] = str(dest)
 
     # Stages whose output we just supplied have nothing left to do.
-    for stage in ("trend", "plan", "script"):
+    # They are marked approved so the loop walks past them, but they were
+    # never run and nobody reviewed them - the board needs to know the
+    # difference, so the list is kept.
+    skipped = ["trend", "plan", "script"]
+    for stage in skipped:
         project.mark(stage)
     needed = {f"{s['id']}_start" for s in data["shots"]}
     needed |= {f"{s['id']}_end" for s in data["shots"]
@@ -260,6 +264,7 @@ def prepare(project, cfg, script=None, image=None, images=None, brief=None,
     if needed - chained <= set(kf):
         project.mark("cast")             # no references to make
         project.mark("images")
+        skipped += ["cast", "images"]
         notes.append("every keyframe supplied, so Cast and Images are skipped")
     elif supplied:
         notes.append(f"{len(needed - chained - set(kf))} keyframe(s) still "
@@ -267,6 +272,7 @@ def prepare(project, cfg, script=None, image=None, images=None, brief=None,
 
     if describe:
         project.mark("cast")             # one shot, no cast list
+        skipped.append("cast")
         notes.append("no characters to cast, so the run starts at Images")
 
     # Which stage this run actually begins at. Written once, here, rather
@@ -285,6 +291,7 @@ def prepare(project, cfg, script=None, image=None, images=None, brief=None,
         "describe": describe or None,
         "mode": mode,
         "at": at,
+        "skipped": skipped,
     }
     project.save()
 
