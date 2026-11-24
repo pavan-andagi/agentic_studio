@@ -22,6 +22,7 @@ comfy:
     music: workflows/ace_step_music.json # ACE-Step 1.5 text-to-music
     ambience: workflows/ltx_t2a.json     # LTX-2.5 text-to-audio (audio-only)
     edit: workflows/qwen_edit_2511.json  # Qwen Image Edit 2511: keyframes with cast references
+    animate: workflows/wan_animate.json   # Wan 2.2 Animate: character swap in a video
 
 # ---- Defaults the Planner starts from (it can change them, you approve) ----
 defaults:
@@ -37,7 +38,7 @@ defaults:
   transition: dissolve            # at hard cuts: none | dissolve | fadeblack
   transition_seconds: 0.5         # chained shots always join seamlessly
   fps: 30
-  max_clip_seconds: 5
+  max_clip_seconds: 15
   images_per_keyframe: 2          # Z-Image variants to choose from
   upscale_4k: false               # true = run the upscale workflow on approved clips
 
