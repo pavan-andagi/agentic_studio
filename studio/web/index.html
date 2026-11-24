@@ -1143,12 +1143,8 @@ function renderNew(){if(!NEW)return '';
  +(isSwap?'replace the cat on the left with the dog in the reference'
   :(m==='image'||m==='describe'?'slow push in, the lantern flickers'
   :'A 15-second narrated short ...'))+'">'+esc(NEW.brief)+'</textarea>')
- +(isVid?'<label>What happens in the clip</label>'
-  +'<textarea id="mo" placeholder="the dog walks left, then jumps over the box">'
-  +esc(NEW.motion||'')+'</textarea>'
-  +'<div class="hint">The clip\'s own motion is kept. This text only '
-  +'steers the look of the replacement - leave it blank if the swap '
-  +'line already says enough.</div>':'')
+ +(isVid?'<div class="hint">The clip\'s own motion, timing and framing '
+  +'are kept. Only the character changes.</div>':'')
  +'<label>Stop after</label><select id="un">'+STOPS.map(function(x){
    return '<option value="'+x[0]+'"'+(NEW.until===x[0]?' selected':'')+'>'
     +esc(x[1])+'</option>'}).join('')+'</select>'
@@ -1455,7 +1451,7 @@ function newRead(){if(!NEW)return;
  if(document.getElementById('sc'))NEW.script=g('sc');
  if(document.getElementById('dc'))NEW.describe=g('dc');
  if(document.getElementById('un'))NEW.until=g('un');
- if(document.getElementById('mo'))NEW.motion=g('mo')}
+}
 /* Two upload slots now: the picture to change, and who replaces the
    subject in it. Same reader, different destination. */
 function pickFiles(id,into){
@@ -1499,7 +1495,7 @@ function newStart(){newRead();NEW.err='';
   headers:{'Content-Type':'application/json'},
   body:JSON.stringify({name:NEW.name,mode:NEW.mode,brief:NEW.brief,
    style:NEW.style,script:NEW.script,describe:NEW.describe,
-   until:NEW.until,files:NEW.files,refs:NEW.refs,motion:NEW.motion})})
+   until:NEW.until,files:NEW.files,refs:NEW.refs})})
   .then(function(r){return r.json().then(function(j){return[r.ok,j]})})
   .then(function(x){if(!x[0]){NEW.busy=false;
     NEW.err=((x[1]&&x[1].error)||'could not start the run')
