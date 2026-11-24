@@ -34,11 +34,11 @@ defaults:
   # supports (about 1 megapixel, e.g. 752x1392) and encodes that as
   # the latent. That is still larger than video_size, so it is not a
   # problem; forcing 2 MP through that model would hurt, not help.
-  video_size: [704, 1280]         # LTX needs multiples of 32 (half-res pass too)
+  video_size: [480, 864]         # LTX needs multiples of 32 (half-res pass too)
   transition: dissolve            # at hard cuts: none | dissolve | fadeblack
   transition_seconds: 0.5         # chained shots always join seamlessly
-  fps: 30
-  max_clip_seconds: 15
+  fps: 16
+  max_clip_seconds: 5
   images_per_keyframe: 2          # Z-Image variants to choose from
   upscale_4k: false               # true = run the upscale workflow on approved clips
 
