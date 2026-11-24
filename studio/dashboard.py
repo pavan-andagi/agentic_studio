@@ -383,6 +383,8 @@ class Handler(BaseHTTPRequestHandler):
             return self._send(400, {"error": f"no stage called {until}"})
         if mode == "topic" and not brief:
             return self._send(400, {"error": "a topic needs a brief"})
+        if mode == "swap" and not brief:
+            return self._send(400, {"error": "say who is being replaced"})
         if mode == "describe":
             if not describe:
                 return self._send(400, {"error": "describe the picture"})
@@ -422,11 +424,19 @@ class Handler(BaseHTTPRequestHandler):
                 f = stage / "shots.json"
                 f.write_text(str(script), encoding="utf-8")
                 cmd += ["--script", str(f)]
-            if mode in ("frames", "image"):
+            if mode in ("frames", "image", "swap"):
                 saved = _save_uploads(stage, body.get("files") or [])
                 if not saved:
                     return self._send(400, {"error": "no pictures supplied"})
-                if mode == "image":
+                if mode == "swap":
+                    refs = _save_uploads(d / "refs", body.get("refs") or [])
+                    if not refs:
+                        return self._send(
+                            400, {"error": "add a picture of the character "
+                                           "that replaces it"})
+                    cmd += ["--image", str(saved[0]),
+                            "--refs", str(d / "refs")]
+                elif mode == "image":
                     cmd += ["--image", str(saved[0])]
                 else:
                     cmd += ["--images", str(stage)]

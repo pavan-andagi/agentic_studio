@@ -172,6 +172,9 @@ def main():
     ap.add_argument("--describe", help="a description of ONE picture to "
                     "generate and then animate; needs --brief for the "
                     "motion")
+    ap.add_argument("--refs", metavar="DIR", help="reference picture(s) of "
+                    "the character that replaces one in --image. With "
+                    "--brief saying who is replaced, this is a swap")
     ap.add_argument("--until", metavar="STAGE", choices=STAGES,
                     help="stop after this stage instead of running the "
                     f"whole pipeline. One of: {', '.join(STAGES)}")
@@ -202,15 +205,16 @@ def main():
         # below needs no knowledge of any of this.
         try:
             how = entry.prepare(p, cfg, args.script, args.image,
-                                args.images, args.brief, args.describe)
+                                args.images, args.brief, args.describe,
+                                args.refs)
         except entry.EntryError as e:
             sys.exit(f"cannot start from what you supplied: {e}")
         if how:
             print(f"[entry] {how}")
         p.save()
-    elif args.script or args.image or args.images or args.describe:
-        sys.exit("--script, --image, --images and --describe are only "
-                 "for 'new'")
+    elif args.script or args.image or args.images or args.describe or args.refs:
+        sys.exit("--script, --image, --images, --describe and --refs are "
+                 "only for 'new'")
 
     # --until works on 'resume' too, so a run that stopped after Clips
     # can be carried on to Audio later without starting again.

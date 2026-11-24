@@ -1075,17 +1075,36 @@ var MODES=[['topic','Topic','a brief; the studio writes everything'],
  ['script','Script','a finished shot list (JSON); keyframes generated'],
  ['frames','Script + pictures','a shot list and your own keyframes'],
  ['image','One picture','animate a single image'],
- ['describe','Describe a picture','the studio draws it, then animates it']];
+ ['describe','Describe a picture','the studio draws it, then animates it'],
+ ['swap','Swap a character','one subject in your picture, replaced']];
 function renderNew(){if(!NEW)return '';
  // Picking a mode changes what the obvious stop point is: somebody who
  // described a picture most likely wants the picture.
  if(NEW.mode!==NEW._lastMode){
-  NEW.until=(NEW.mode==='describe')?'images':'audio';
+  NEW.until=(NEW.mode==='describe'||NEW.mode==='swap')?'images':'audio';
   NEW._lastMode=NEW.mode}
  var m=NEW.mode,needsScript=(m==='script'||m==='frames'),
-     needsPics=(m==='frames'||m==='image'),needsLook=(m==='describe'),
+     needsPics=(m==='frames'||m==='image'||m==='swap'),
+     isSwap=(m==='swap'),needsLook=(m==='describe'),
      // Nothing is animated, so there is nothing to say about movement.
      stillOnly=(NEW.until==='images');
+ /* A swap is read picture-first: this is the image, this is who goes in
+    it, and only then the sentence saying who comes out. Everywhere else
+    the uploads are an afterthought and stay at the bottom. */
+ var pics=(needsPics?'<label>'
+   +(isSwap?'The picture to change':(m==='image'?'Picture':'Keyframes'))
+   +'</label>'
+  +'<input type="file" id="fs" accept="image/*"'
+  +(m==='image'||isSwap?'':' multiple')+'>'
+  +'<div class="m">'+(NEW.files.length?NEW.files.length+' selected: '
+   +esc(NEW.files.map(function(f){return f.name}).join(', ')):'none yet')
+  +'</div>':'')
+ +(isSwap?'<label>The character that replaces it</label>'
+  +'<input type="file" id="rf" accept="image/*" multiple>'
+  +'<div class="m">'+(NEW.refs.length?NEW.refs.length+' selected: '
+   +esc(NEW.refs.map(function(f){return f.name}).join(', '))
+   :'none yet - a clear picture of them, plain background is best')
+  +'</div>':'');
  return'<div class="newp" data-newbg="1"><div class="newb">'
  +'<h3>New run</h3><div class="m">The run starts as its own process, so this page keeps working while it goes.</div>'
  +'<label>What are you starting from</label><div class="modes">'
@@ -1096,14 +1115,17 @@ function renderNew(){if(!NEW)return '';
    :((MODES.filter(function(x){return x[0]===m})[0]||[])[2]||''))+'</div>'
  +'<label>Project name</label><input type="text" id="nm" value="'
  +esc(NEW.name)+'" placeholder="letters, digits, - and _">'
+ +(isSwap?pics:'')
  +(needsLook?'<label>What the picture shows</label><textarea id="dc" placeholder="a supermassive black hole seen edge on, orange accretion disk, dust lanes, deep space behind">'
   +esc(NEW.describe||'')+'</textarea>':'')
  +((needsLook&&stillOnly)?'':
-   '<label>'+(m==='image'||m==='describe'?'What should move':'Brief')
+   '<label>'+(isSwap?'Who is being replaced'
+    :(m==='image'||m==='describe'?'What should move':'Brief'))
  +(m==='script'||m==='frames'?' (optional)':'')+'</label>'
  +'<textarea id="bf" placeholder="'
- +(m==='image'||m==='describe'?'slow push in, the lantern flickers'
-  :'A 15-second narrated short ...')+'">'+esc(NEW.brief)+'</textarea>')
+ +(isSwap?'replace the cat on the left with the dog in the reference'
+  :(m==='image'||m==='describe'?'slow push in, the lantern flickers'
+  :'A 15-second narrated short ...'))+'">'+esc(NEW.brief)+'</textarea>')
  +'<label>Stop after</label><select id="un">'+STOPS.map(function(x){
    return '<option value="'+x[0]+'"'+(NEW.until===x[0]?' selected':'')+'>'
     +esc(x[1])+'</option>'}).join('')+'</select>'
@@ -1113,12 +1135,7 @@ function renderNew(){if(!NEW)return '';
   +(NEW.style===x?' selected':'')+'>'+esc(x)+'</option>'}).join('')+'</select>'
  +(needsScript?'<label>Shot list (JSON)</label><textarea id="sc" placeholder=\'{"shots": [{"id": "s01", "motion_prompt": "..."}]}\'>'
   +esc(NEW.script||'')+'</textarea>':'')
- +(needsPics?'<label>'+(m==='image'?'Picture':'Keyframes')+'</label>'
-  +'<input type="file" id="fs" accept="image/*"'
-  +(m==='image'?'':' multiple')+'>'
-  +'<div class="m">'+(NEW.files.length?NEW.files.length+' selected: '
-   +esc(NEW.files.map(function(f){return f.name}).join(', ')):'none yet')
-  +'</div>':'')
+ +(isSwap?'':pics)
  +(NEW.err?'<div class="newerr">'+esc(NEW.err)+'</div>':'')
  +'<div class="row" style="margin-top:14px">'
  +'<button class="ok" data-start="1"'+(NEW.busy?' disabled':'')+'>'
@@ -1404,7 +1421,7 @@ function send(text){var p=data&&data.pending;if(!p)return;
    return post(cur.id,text)})
   .catch(function(){offline(true)})}
 function redraw(){lastSig=null;render()}
-function newOpen(){NEW={mode:'topic',name:'',brief:'',style:'',script:'',describe:'',until:'audio',
+function newOpen(){NEW={mode:'topic',name:'',brief:'',style:'',script:'',describe:'',until:'audio',refs:[],
   files:[],styles:(NEW&&NEW.styles)||[],err:'',busy:false};
  fetch(q('/api/styles')).then(function(r){return r.json()})
   .then(function(j){if(NEW){NEW.styles=j.styles||[];paintNew()}})
@@ -1415,15 +1432,21 @@ function newRead(){if(!NEW)return;
  if(document.getElementById('sc'))NEW.script=g('sc');
  if(document.getElementById('dc'))NEW.describe=g('dc');
  if(document.getElementById('un'))NEW.until=g('un')}
-function paintNew(){document.getElementById('modal').innerHTML=renderNew();
- var f=document.getElementById('fs');
- if(f)f.onchange=function(){var list=[].slice.call(f.files),out=[],left=list.length;
+/* Two upload slots now: the picture to change, and who replaces the
+   subject in it. Same reader, different destination. */
+function pickFiles(id,into){
+ var f=document.getElementById(id);
+ if(!f)return;
+ f.onchange=function(){var list=[].slice.call(f.files),out=[],left=list.length;
   if(!left)return;
+  var done=function(){if(--left===0){newRead();NEW[into]=out.filter(Boolean);
+    paintNew()}};
   list.forEach(function(file,i){var rd=new FileReader();
-   rd.onload=function(){out[i]={name:file.name,data:String(rd.result)};
-    if(--left===0){newRead();NEW.files=out.filter(Boolean);paintNew()}};
-   rd.onerror=function(){if(--left===0){newRead();NEW.files=out.filter(Boolean);paintNew()}};
+   rd.onload=function(){out[i]={name:file.name,data:String(rd.result)};done()};
+   rd.onerror=done;
    rd.readAsDataURL(file)})}}
+function paintNew(){document.getElementById('modal').innerHTML=renderNew();
+ pickFiles('fs','files'); pickFiles('rf','refs')}
 function newStart(){newRead();NEW.err='';
  if(!/^[A-Za-z0-9][A-Za-z0-9_-]{0,63}$/.test(NEW.name)){
   NEW.err='The name may use letters, digits, - and _ only.';return paintNew()}
@@ -1436,6 +1459,12 @@ function newStart(){newRead();NEW.err='';
  if(NEW.mode!=='topic'&&NEW.mode!=='script'&&NEW.mode!=='describe'
     &&!NEW.files.length){
   NEW.err='Choose at least one picture.';return paintNew()}
+ if(NEW.mode==='swap'){
+  if(!NEW.refs.length){
+   NEW.err='Add a picture of the character that replaces it.';
+   return paintNew()}
+  if(!NEW.brief.trim()){
+   NEW.err='Say who is being replaced.';return paintNew()}}
  if(NEW.mode==='image'&&!NEW.brief.trim()){
   NEW.err='Say what should move.';return paintNew()}
  if(NEW.mode==='describe'&&NEW.until!=='images'&&!NEW.brief.trim()){
@@ -1446,7 +1475,7 @@ function newStart(){newRead();NEW.err='';
   headers:{'Content-Type':'application/json'},
   body:JSON.stringify({name:NEW.name,mode:NEW.mode,brief:NEW.brief,
    style:NEW.style,script:NEW.script,describe:NEW.describe,
-   until:NEW.until,files:NEW.files})})
+   until:NEW.until,files:NEW.files,refs:NEW.refs})})
   .then(function(r){return r.json().then(function(j){return[r.ok,j]})})
   .then(function(x){if(!x[0]){NEW.busy=false;
     NEW.err=((x[1]&&x[1].error)||'could not start the run')

@@ -89,9 +89,48 @@ def cast_for(ctx, sh):
     return out
 
 
+def swap_of(sh):
+    """A shot that is a character swap, or None.
+
+    {"source": path, "refs": [paths], "instruction": "..."} - the source
+    is the picture being changed, the refs show who replaces whom. It is
+    a different job from building a keyframe out of cast references:
+    there everything is new, here everything must stay the same except
+    one subject."""
+    sw = sh.get("swap")
+    if isinstance(sw, dict) and sw.get("source") and sw.get("refs"):
+        return sw
+    return None
+
+
 def use_edit(ctx, sh):
     wf = ctx.cfg["comfy"]["workflows"].get("edit")
-    return bool(wf and Path(wf).exists() and cast_for(ctx, sh))
+    if not (wf and Path(wf).exists()):
+        return False
+    return bool(swap_of(sh) or cast_for(ctx, sh))
+
+
+SWAP = (
+    "Image 1 is the picture to change. {said} The replacement is the "
+    "subject shown in {where}. "
+    "Keep everything else in image 1 exactly as it is: the same "
+    "background, the same other people and objects, the same camera "
+    "angle, framing, lighting, colour and composition. Give the "
+    "replacement the same position, pose, scale and perspective as what "
+    "it replaces, with shadows and contact with the ground that match "
+    "the original lighting. Do not copy the plain reference background, "
+    "and do not add anything that was not in image 1.")
+
+
+def swap_prompt(sw, n_refs):
+    """The instruction is the human's own sentence, so it is used once,
+    whole. Restating it inside a template produced things like 'Replace
+    replace the cat with the dog in image 1'."""
+    said = (sw.get("instruction") or "").strip()
+    if said and said[-1] not in ".!?":
+        said += "."
+    return SWAP.format(said=said or "Replace the main subject.",
+                       where="image 2" if n_refs < 2 else "images 2 and 3")
 
 
 TURN_NOTE = ("Some reference pictures are turnaround sheets showing the "
@@ -130,19 +169,6 @@ def edit_prompt(ctx, names, scene, first_is_scene=False):
             f"Do not copy the plain grey reference backgrounds.")
 
 
-def _safe(sh, prompt):
-    """Leave room for whatever the Render stage will composite here.
-
-    The Script agent names the part of the frame an overlay will sit in.
-    Without this the type lands on a busy ridge line and has to fight
-    the picture to be read."""
-    area = sh.get("safe_area")
-    if not area or not (sh.get("overlays") or []):
-        return prompt
-    return (f"{prompt} Keep the {area} of the frame visually quiet and "
-            f"uncluttered, with no important detail there.")
-
-
 def generate(ctx, sh, prompt, key, i, w, h):
     """One candidate: plain Z-Image, or Qwen Edit with the cast pictures.
 
@@ -155,30 +181,34 @@ def generate(ctx, sh, prompt, key, i, w, h):
     ccfg = cfg.get("cast") or {}
     out = p.dir / "candidates" / key
     seed = random.randint(1, 2**31)
-    prompt = _safe(sh, prompt)
     if not use_edit(ctx, sh):
         files = ctx.comfy.run(cfg["comfy"]["workflows"]["image"], {
             "@PROMPT": prompt, "@SEED": seed, "@WIDTH": w, "@HEIGHT": h,
             "@FILENAME": f"studio/{p.dir.name}_{key}"}, out,
             label=f"{key} #{i + 1}")
         return [f for f in files if f.suffix.lower() in IMG_EXT]
+    sw = swap_of(sh)
+    if sw:
+        # One pass, always. A second pass would re-diffuse the whole
+        # frame, which is the opposite of what a swap is for.
+        refs = [ctx.comfy.upload(r) for r in list(sw["refs"])[:2]]
+        vals = {"@PROMPT": swap_prompt(sw, len(refs)), "@SEED": seed,
+                "@WIDTH": w, "@HEIGHT": h,
+                "@FILENAME": f"studio/{p.dir.name}_{key}",
+                "@IMAGE": ctx.comfy.upload(sw["source"]),
+                "@IMAGE2": refs[0] if refs else None,
+                "@IMAGE3": refs[1] if len(refs) > 1 else None}
+        return [f for f in ctx.comfy.run(cfg["comfy"]["workflows"]["edit"],
+                                         vals, out,
+                                         label=f"{key} #{i + 1} (swap)")
+                if f.suffix.lower() in IMG_EXT][:1]
+
     cast = p.state["cast"]
     names = cast_for(ctx, sh)
     cap = max(1, min(3, int(ccfg.get("max_refs_per_keyframe", 3))))
     first, rest = names[:cap], names[cap:]
     if not ccfg.get("multipass", False):
         rest = []                 # the others stay described in the text
-    # The edit workflow has no width/height node: it scales the FIRST
-    # reference to the nearest supported resolution and encodes that as
-    # the latent, so reference #1 decides the keyframe's shape. Character
-    # turnaround sheets are landscape, so leading with one gives a
-    # landscape keyframe for a portrait video. Stable sort, so the
-    # location-then-props-then-people order survives otherwise.
-    views = p.state.get("cast_views") or {}
-    first.sort(key=lambda n: views.get(n) == "turnaround")
-    if first and views.get(first[0]) == "turnaround":
-        print(f"  note: every reference for {key} is a turnaround sheet, "
-              f"so this keyframe takes its shape from a landscape picture")
     # the reference pictures already carry the look of `first`
     prompt = strip_locked(ctx, prompt, first)
     refs = [ctx.comfy.upload(cast[n]) for n in first]
@@ -209,7 +239,12 @@ def generate(ctx, sh, prompt, key, i, w, h):
 
 
 def signature(ctx, sh, field):
-    """What this keyframe was made from: prompt + the cast pictures."""
+    """What this keyframe was made from: prompt + the pictures it used."""
+    sw = swap_of(sh)
+    if sw:
+        return "|".join([str(sh.get(field) or ""), str(sw["source"]),
+                         ",".join(str(r) for r in sw["refs"]),
+                         str(sw.get("instruction") or "")])
     cast = ctx.project.state.get("cast") or {}
     refs = [f"{c}={cast[c]}" for c in cast_for(ctx, sh)] if use_edit(ctx, sh) else []
     return sh[field] + ("|" + ",".join(refs) if refs else "")

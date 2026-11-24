@@ -21,6 +21,7 @@ Modes, by which flag was given:
     --script f.json --images dir/    -> clips      (pictures supplied too)
     --image p.png --brief '...'      -> clips      (animate one picture)
     --describe '...' --brief '...'   -> cast       (draw it, then animate)
+    --image p.png --refs r/ --brief  -> images     (swap a character)
 
 Supplying a script bypasses the Cast stage's reason to exist for any
 keyframe you also supply, so cross-shot consistency becomes yours to
@@ -159,7 +160,7 @@ def _check_aspect(path, aspect, key):
 
 # ------------------------------------------------------------------- entry
 def prepare(project, cfg, script=None, image=None, images=None, brief=None,
-            describe=None):
+            describe=None, refs=None):
     """Fill in whatever was supplied and mark those stages approved.
 
     Returns a line describing what was done, or None for the normal
@@ -174,11 +175,49 @@ def prepare(project, cfg, script=None, image=None, images=None, brief=None,
     kf_dir.mkdir(exist_ok=True)
     notes = []
 
+    # ---- swap a character in a supplied picture -------------------------
+    # The source stays; one subject in it is replaced by the subject in
+    # the reference pictures. Qwen Image Edit does this in one pass, so
+    # it is the Images stage with different inputs, not a new stage.
+    if refs and image and not script:
+        src = Path(image)
+        if not src.exists():
+            raise EntryError(f"{src} does not exist")
+        rp = Path(refs)
+        pics = (sorted(x for x in rp.iterdir()
+                       if x.suffix.lower() in IMG_EXT)
+                if rp.is_dir() else [rp])
+        pics = [x for x in pics if x.exists()]
+        if not pics:
+            raise EntryError(f"no reference pictures found in {refs}")
+        if len(pics) > 2:
+            print(f"  NOTE: {len(pics)} references given; Qwen Image Edit "
+                  f"takes two alongside the source, so only "
+                  f"{', '.join(p.name for p in pics[:2])} will be used.")
+        said = (brief or "").strip()
+        if not said:
+            raise EntryError("--refs needs --brief as well: say who is "
+                             "being replaced, e.g. --brief 'replace the "
+                             "cat with the golden retriever'")
+        # The instruction doubles as the motion prompt if this run goes
+        # on to animate the result.
+        data = _normalise({"shots": [{
+            "id": "s01", "beat": said[:80],
+            "start_image_prompt": said,
+            "motion_prompt": "",
+            "duration": default_seconds,
+            "swap": {"source": str(src.resolve()),
+                     "refs": [str(x.resolve()) for x in pics[:2]],
+                     "instruction": said}}]}, default_seconds)
+        supplied = {}
+        notes.append(f"character swap in {src.name} using "
+                     f"{len(pics[:2])} reference picture(s)")
+
     # ---- one described picture, drawn and then animated ----------------
     # Nothing is supplied here except words, so Images still has to run.
     # What is skipped is Trend, Plan and Script: there is one shot and
     # you have already said what is in it.
-    if describe and not (script or image):
+    elif describe and not (script or image):
         look = describe.strip()
         if not look:
             raise EntryError("--describe needs a description of the picture")
@@ -270,7 +309,7 @@ def prepare(project, cfg, script=None, image=None, images=None, brief=None,
         notes.append(f"{len(needed - chained - set(kf))} keyframe(s) still "
                      f"to generate")
 
-    if describe:
+    if describe or (refs and image and not script):
         project.mark("cast")             # one shot, no cast list
         skipped.append("cast")
         notes.append("no characters to cast, so the run starts at Images")
@@ -280,7 +319,8 @@ def prepare(project, cfg, script=None, image=None, images=None, brief=None,
     # goes, and by stage 6 you can no longer tell where it came in.
     order = ["trend", "plan", "script", "cast", "images", "clips"]
     at = next((s for s in order if not project.approved(s)), "clips")
-    mode = ("describe" if describe else
+    mode = ("swap" if (refs and image and not script) else
+            "describe" if describe else
             "image" if (image and not script) else
             "frames" if (script and (images or image)) else
             "script" if script else "topic")
@@ -289,6 +329,7 @@ def prepare(project, cfg, script=None, image=None, images=None, brief=None,
         "image": str(image) if image else None,
         "images": str(images) if images else None,
         "describe": describe or None,
+        "refs": str(refs) if refs else None,
         "mode": mode,
         "at": at,
         "skipped": skipped,
