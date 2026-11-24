@@ -104,9 +104,11 @@ do_deps() {
   say "System packages"
   if command -v apt-get >/dev/null; then
     apt-get update -qq 2>/dev/null
+    # aria2 is here for the models: HuggingFace throttles one connection,
+    # and the download step uses aria2c when it finds it.
     apt-get install -y -qq ffmpeg espeak-ng libsndfile1 \
-        fonts-dejavu-core 2>/dev/null \
-      && note "ffmpeg, espeak-ng, libsndfile1, DejaVu fonts" \
+        fonts-dejavu-core aria2 2>/dev/null \
+      && note "ffmpeg, espeak-ng, libsndfile1, DejaVu fonts, aria2" \
       || bad "apt-get reported problems - check the log"
   else
     note "no apt-get here; install ffmpeg, espeak-ng, libsndfile1 and a TTF font yourself"
@@ -262,7 +264,8 @@ do_models() {
       rm -f "$dest"
     fi
     [ "$MODE" = check ] && { note "MISSING $dir/$file  (~$size)"; fail=$((fail+1)); continue; }
-    note "get    $file  (~$size)"
+    note "get    $file  (~$size)$(command -v aria2c >/dev/null \
+      && echo "  [aria2c, 8 connections]" || echo "  [wget, 1 connection]")"
     mkdir -p "$(dirname "$dest")"
     # Downloaded to .part and moved into place only once it checks out,
     # so an interrupted run leaves no file that looks finished. No -c:
@@ -270,7 +273,25 @@ do_models() {
     # of restarting, which is exactly how a file ends up twice its size.
     local part="$dest.part"
     rm -f "$part"
-    if wget -q --show-progress "${hdr[@]}" -O "$part" "$url"; then
+    # HuggingFace throttles a single connection hard - often a fifth of
+    # what the pod can actually pull. aria2c opens several and is
+    # routinely 5x faster on the big files. wget stays as the fallback
+    # so nothing breaks where aria2c is missing.
+    if command -v aria2c >/dev/null; then
+      if aria2c -x 8 -s 8 -k 16M --continue=false --allow-overwrite=true \
+           --summary-interval=10 --console-log-level=warn \
+           ${HF_TOKEN:+--header="Authorization: Bearer $HF_TOKEN"} \
+           -d "$(dirname "$part")" -o "$(basename "$part")" "$url"; then
+        dl_ok=1
+      else
+        dl_ok=0
+      fi
+    elif wget -q --show-progress "${hdr[@]}" -O "$part" "$url"; then
+      dl_ok=1
+    else
+      dl_ok=0
+    fi
+    if [ "$dl_ok" = 1 ]; then
       if [ "$(stat -c%s "$part")" -lt 100000 ]; then
         bad "       ^ got $(stat -c%s "$part") bytes - that is an error page, removing"
         head -c 200 "$part" | tr -d '\0' | tee -a "$LOG"
