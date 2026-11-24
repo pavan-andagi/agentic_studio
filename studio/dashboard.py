@@ -31,6 +31,7 @@ WEB = Path(__file__).parent / "web"
 STAGES = ["trend", "plan", "script", "cast", "images", "clips",
           "finish", "render", "audio"]
 IMG = {".png", ".jpg", ".jpeg", ".webp"}
+VID = {".mp4", ".mov", ".webm", ".mkv", ".m4v"}
 VID = {".mp4", ".webm", ".mov"}
 # A project name becomes a directory name and a command-line argument,
 # so it is the one piece of user input here that must be boring.
@@ -55,11 +56,12 @@ def read_styles(config):
         return []
 
 
-def _save_uploads(stage, files):
+def _save_uploads(stage, files, allow=None):
     """[{name, data}] with base64 data -> saved paths, in order.
 
     Names are taken apart rather than trusted: an uploaded file called
     ../../etc/passwd is a file called passwd."""
+    allow = allow or IMG
     stage.mkdir(parents=True, exist_ok=True)
     out = []
     for i, f in enumerate(files, 1):
@@ -67,8 +69,8 @@ def _save_uploads(stage, files):
         if not raw:
             continue
         stem = Path(str(f.get("name") or f"img{i}")).name
-        if Path(stem).suffix.lower() not in IMG:
-            stem += ".png"
+        if Path(stem).suffix.lower() not in allow:
+            stem += ".png" if allow is IMG else ".mp4"
         dest = stage / stem
         dest.write_bytes(raw)
         out.append(dest)
@@ -379,11 +381,12 @@ class Handler(BaseHTTPRequestHandler):
         mode = str(body.get("mode", "topic")).strip()
         describe = str(body.get("describe", "")).strip()
         until = str(body.get("until", "")).strip()
+        motion = str(body.get("motion", "")).strip()
         if until and until not in STAGES:
             return self._send(400, {"error": f"no stage called {until}"})
         if mode == "topic" and not brief:
             return self._send(400, {"error": "a topic needs a brief"})
-        if mode == "swap" and not brief:
+        if mode in ("swap", "swapvid") and not brief:
             return self._send(400, {"error": "say who is being replaced"})
         if mode == "describe":
             if not describe:
@@ -424,6 +427,18 @@ class Handler(BaseHTTPRequestHandler):
                 f = stage / "shots.json"
                 f.write_text(str(script), encoding="utf-8")
                 cmd += ["--script", str(f)]
+            if mode == "swapvid":
+                clip = _save_uploads(stage, body.get("files") or [], VID)
+                if not clip:
+                    return self._send(400, {"error": "upload a video"})
+                refs = _save_uploads(d / "refs", body.get("refs") or [])
+                if not refs:
+                    return self._send(
+                        400, {"error": "add a picture of the character "
+                                       "that replaces it"})
+                cmd += ["--video", str(clip[0]), "--refs", str(d / "refs")]
+                if motion:
+                    cmd += ["--motion", motion]
             if mode in ("frames", "image", "swap"):
                 saved = _save_uploads(stage, body.get("files") or [])
                 if not saved:

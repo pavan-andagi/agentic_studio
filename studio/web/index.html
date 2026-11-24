@@ -815,10 +815,22 @@ function bubble(bx,by,bw,title,sub,dream){
 
 /* Each way in, and the stage it lands on. entry.prepare() writes the
    stage into state.entry.at, so this is a lookup, not a guess. */
-var ENTRY=[{at:'trend', n:'Topic',       s:'a brief, nothing else'},
-           {at:'cast',  n:'Script',      s:'your shot list'},
-           {at:'images',n:'Description', s:'words, drawn here'},
-           {at:'clips', n:'Pictures',    s:'your own keyframes'}];
+var ENTRY=[
+ {at:'trend', mode:'topic',   n:'Topic',       s:'a brief, nothing else'},
+ {at:'cast',  mode:'script',  n:'Script',      s:'your shot list'},
+ {at:'images',mode:'describe',n:'Description', s:'words, drawn here'},
+ {at:'images',mode:'swap',    n:'Character swap',
+  s:'a picture, one subject replaced'},
+ {at:'images',mode:'swapvid', n:'Character swap',
+  s:'a clip, frame swapped and re-animated'},
+ {at:'clips', mode:'image',   n:'Pictures',    s:'your own keyframes'}];
+/* Two ways in can land on the same stage - a description and a swap
+   both arrive at Image creation. Show the one this run used; otherwise
+   the first, as a sample of what that door is for. */
+function entryFor(id,mode){
+ var here=ENTRY.filter(function(x){return x.at===id});
+ if(!here.length)return null;
+ return here.filter(function(x){return x.mode===mode})[0]||here[0]}
 /* box: 150 wide, sitting in the margin to the left of the stations,
    with a 3px accent on its leading edge and a wire into the rail. */
 function entryBox(y,h,e,on,tag,cls,slot){
@@ -900,7 +912,7 @@ function renderFlow(d,sel){
   var isSkip=st.indexOf('skip')===0;
   if(isSkip)sub='supplied, so this did not run';
   var showSub=(!asleep)||isSkip;
-  var ein=ENTRY.filter(function(x){return x.at===s.id})[0],
+  var ein=entryFor(s.id,ent.mode),
       eout=(stopAt===i&&stopAt<NS-1),
       slot=(ein&&eout)?'top':'';
   if(ein)out.push(entryBox(y,H,ein,entAt===s.id,'this run','',slot));
@@ -1076,25 +1088,30 @@ var MODES=[['topic','Topic','a brief; the studio writes everything'],
  ['frames','Script + pictures','a shot list and your own keyframes'],
  ['image','One picture','animate a single image'],
  ['describe','Describe a picture','the studio draws it, then animates it'],
- ['swap','Swap a character','one subject in your picture, replaced']];
+ ['swap','Character swap: Image','one subject in your picture, replaced'],
+ ['swapvid','Character swap: Video',
+  'its first frame is swapped, then animated']];
 function renderNew(){if(!NEW)return '';
  // Picking a mode changes what the obvious stop point is: somebody who
  // described a picture most likely wants the picture.
  if(NEW.mode!==NEW._lastMode){
-  NEW.until=(NEW.mode==='describe'||NEW.mode==='swap')?'images':'audio';
+  NEW.until=(NEW.mode==='describe'||NEW.mode==='swap')?'images'
+   :(NEW.mode==='swapvid'?'clips':'audio');
   NEW._lastMode=NEW.mode}
  var m=NEW.mode,needsScript=(m==='script'||m==='frames'),
-     needsPics=(m==='frames'||m==='image'||m==='swap'),
-     isSwap=(m==='swap'),needsLook=(m==='describe'),
+     isVid=(m==='swapvid'),isSwap=(m==='swap'||isVid),
+     needsPics=(m==='frames'||m==='image'||isSwap),
+     needsLook=(m==='describe'),
      // Nothing is animated, so there is nothing to say about movement.
      stillOnly=(NEW.until==='images');
  /* A swap is read picture-first: this is the image, this is who goes in
     it, and only then the sentence saying who comes out. Everywhere else
     the uploads are an afterthought and stay at the bottom. */
  var pics=(needsPics?'<label>'
-   +(isSwap?'The picture to change':(m==='image'?'Picture':'Keyframes'))
+   +(isVid?'The video':(isSwap?'The picture to change'
+     :(m==='image'?'Picture':'Keyframes')))
    +'</label>'
-  +'<input type="file" id="fs" accept="image/*"'
+  +'<input type="file" id="fs" accept="'+(isVid?'video/*':'image/*')+'"'
   +(m==='image'||isSwap?'':' multiple')+'>'
   +'<div class="m">'+(NEW.files.length?NEW.files.length+' selected: '
    +esc(NEW.files.map(function(f){return f.name}).join(', ')):'none yet')
@@ -1126,6 +1143,12 @@ function renderNew(){if(!NEW)return '';
  +(isSwap?'replace the cat on the left with the dog in the reference'
   :(m==='image'||m==='describe'?'slow push in, the lantern flickers'
   :'A 15-second narrated short ...'))+'">'+esc(NEW.brief)+'</textarea>')
+ +(isVid?'<label>What happens in the clip</label>'
+  +'<textarea id="mo" placeholder="the dog walks left, then jumps over the box">'
+  +esc(NEW.motion||'')+'</textarea>'
+  +'<div class="hint">The motion is generated fresh from the swapped '
+  +'frame, so describe the action you want. The original clip\'s exact '
+  +'movement cannot be carried over.</div>':'')
  +'<label>Stop after</label><select id="un">'+STOPS.map(function(x){
    return '<option value="'+x[0]+'"'+(NEW.until===x[0]?' selected':'')+'>'
     +esc(x[1])+'</option>'}).join('')+'</select>'
@@ -1421,7 +1444,7 @@ function send(text){var p=data&&data.pending;if(!p)return;
    return post(cur.id,text)})
   .catch(function(){offline(true)})}
 function redraw(){lastSig=null;render()}
-function newOpen(){NEW={mode:'topic',name:'',brief:'',style:'',script:'',describe:'',until:'audio',refs:[],
+function newOpen(){NEW={mode:'topic',name:'',brief:'',style:'',script:'',describe:'',until:'audio',refs:[],motion:'',
   files:[],styles:(NEW&&NEW.styles)||[],err:'',busy:false};
  fetch(q('/api/styles')).then(function(r){return r.json()})
   .then(function(j){if(NEW){NEW.styles=j.styles||[];paintNew()}})
@@ -1431,7 +1454,8 @@ function newRead(){if(!NEW)return;
  NEW.name=g('nm');NEW.brief=g('bf');NEW.style=g('sy');
  if(document.getElementById('sc'))NEW.script=g('sc');
  if(document.getElementById('dc'))NEW.describe=g('dc');
- if(document.getElementById('un'))NEW.until=g('un')}
+ if(document.getElementById('un'))NEW.until=g('un');
+ if(document.getElementById('mo'))NEW.motion=g('mo')}
 /* Two upload slots now: the picture to change, and who replaces the
    subject in it. Same reader, different destination. */
 function pickFiles(id,into){
@@ -1459,7 +1483,7 @@ function newStart(){newRead();NEW.err='';
  if(NEW.mode!=='topic'&&NEW.mode!=='script'&&NEW.mode!=='describe'
     &&!NEW.files.length){
   NEW.err='Choose at least one picture.';return paintNew()}
- if(NEW.mode==='swap'){
+ if(NEW.mode==='swap'||NEW.mode==='swapvid'){
   if(!NEW.refs.length){
    NEW.err='Add a picture of the character that replaces it.';
    return paintNew()}
@@ -1475,7 +1499,7 @@ function newStart(){newRead();NEW.err='';
   headers:{'Content-Type':'application/json'},
   body:JSON.stringify({name:NEW.name,mode:NEW.mode,brief:NEW.brief,
    style:NEW.style,script:NEW.script,describe:NEW.describe,
-   until:NEW.until,files:NEW.files,refs:NEW.refs})})
+   until:NEW.until,files:NEW.files,refs:NEW.refs,motion:NEW.motion})})
   .then(function(r){return r.json().then(function(j){return[r.ok,j]})})
   .then(function(x){if(!x[0]){NEW.busy=false;
     NEW.err=((x[1]&&x[1].error)||'could not start the run')

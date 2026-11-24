@@ -172,6 +172,11 @@ def main():
     ap.add_argument("--describe", help="a description of ONE picture to "
                     "generate and then animate; needs --brief for the "
                     "motion")
+    ap.add_argument("--video", metavar="CLIP", help="a video whose first "
+                    "frame has a character swapped, then animated again. "
+                    "With --refs and --brief")
+    ap.add_argument("--motion", metavar="TEXT", help="what happens in the "
+                    "swapped clip; only with --video")
     ap.add_argument("--refs", metavar="DIR", help="reference picture(s) of "
                     "the character that replaces one in --image. With "
                     "--brief saying who is replaced, this is a swap")
@@ -194,7 +199,8 @@ def main():
         sys.exit("config.yaml styles:\n  " + "\n  ".join(problems))
     p = Project(cfg["projects_dir"], args.name)
     if args.command == "new":
-        if not (args.brief or args.script or args.image or args.describe):
+        if not (args.brief or args.script or args.image or args.describe
+                or args.video):
             sys.exit("give --brief (a topic), --script (a finished "
                      "shot list), --image (a picture to animate), or "
                      "--describe (a picture to draw and animate)")
@@ -206,15 +212,16 @@ def main():
         try:
             how = entry.prepare(p, cfg, args.script, args.image,
                                 args.images, args.brief, args.describe,
-                                args.refs)
+                                args.refs, args.video, args.motion)
         except entry.EntryError as e:
             sys.exit(f"cannot start from what you supplied: {e}")
         if how:
             print(f"[entry] {how}")
         p.save()
-    elif args.script or args.image or args.images or args.describe or args.refs:
-        sys.exit("--script, --image, --images, --describe and --refs are "
-                 "only for 'new'")
+    elif (args.script or args.image or args.images or args.describe
+          or args.refs or args.video):
+        sys.exit("--script, --image, --images, --describe, --refs and "
+                 "--video are only for 'new'")
 
     # --until works on 'resume' too, so a run that stopped after Clips
     # can be carried on to Audio later without starting again.

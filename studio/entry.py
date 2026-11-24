@@ -21,7 +21,8 @@ Modes, by which flag was given:
     --script f.json --images dir/    -> clips      (pictures supplied too)
     --image p.png --brief '...'      -> clips      (animate one picture)
     --describe '...' --brief '...'   -> cast       (draw it, then animate)
-    --image p.png --refs r/ --brief  -> images     (swap a character)
+    --image p.png --refs r/ --brief  -> images     (swap in a picture)
+    --video c.mp4 --refs r/ --brief  -> images     (swap in a video)
 
 Supplying a script bypasses the Cast stage's reason to exist for any
 keyframe you also supply, so cross-shot consistency becomes yours to
@@ -50,6 +51,45 @@ SHOT_DEFAULTS = {
     "safe_area": None,
     "edit_note": "",
 }
+
+
+VIDEO_EXT = (".mp4", ".mov", ".webm", ".mkv", ".m4v")
+
+
+def _first_frame(src, dest):
+    """Frame one of a clip, as a PNG. Raises if ffmpeg cannot do it.
+
+    A swap in a video is a swap in its first frame, animated again. The
+    original motion is not preserved - that needs a video-to-video model,
+    which is not on this machine - so the frame is the honest unit of
+    work here."""
+    import subprocess
+    try:
+        subprocess.run(["ffmpeg", "-y", "-v", "error", "-i", str(src),
+                        "-frames:v", "1", str(dest)],
+                       check=True, capture_output=True, timeout=120)
+    except FileNotFoundError:
+        raise EntryError("ffmpeg is not installed, so the first frame of "
+                         "the clip cannot be read")
+    except subprocess.CalledProcessError as e:
+        raise EntryError(f"could not read {Path(src).name}: "
+                         f"{e.stderr.decode(errors='replace')[:160]}")
+    if not Path(dest).exists():
+        raise EntryError(f"no frame came out of {Path(src).name}")
+    return Path(dest)
+
+
+def _seconds(src):
+    """How long the clip is, or None if ffprobe cannot say."""
+    import subprocess
+    try:
+        out = subprocess.run(
+            ["ffprobe", "-v", "error", "-show_entries", "format=duration",
+             "-of", "default=nw=1:nk=1", str(src)],
+            check=True, capture_output=True, text=True, timeout=60).stdout
+        return float(out.strip())
+    except Exception:                                        # noqa: BLE001
+        return None
 
 
 class EntryError(Exception):
@@ -143,6 +183,25 @@ def _bind_images(shots, supplied, project, aspect):
     return out
 
 
+def _refs_in(refs):
+    """The reference pictures, capped at what Qwen Edit can take.
+
+    Three images per pass, one of which is the picture being changed, so
+    two references. Saying which two were used beats dropping the rest
+    in silence."""
+    rp = Path(refs)
+    pics = (sorted(x for x in rp.iterdir() if x.suffix.lower() in IMG_EXT)
+            if rp.is_dir() else [rp])
+    pics = [x for x in pics if x.exists()]
+    if not pics:
+        raise EntryError(f"no reference pictures found in {refs}")
+    if len(pics) > 2:
+        print(f"  NOTE: {len(pics)} references given; Qwen Image Edit takes "
+              f"two alongside the picture being changed, so only "
+              f"{', '.join(x.name for x in pics[:2])} will be used.")
+    return pics
+
+
 def _check_aspect(path, aspect, key):
     """A supplied picture of the wrong shape ruins the clip quietly, so
     say it loudly instead."""
@@ -160,12 +219,12 @@ def _check_aspect(path, aspect, key):
 
 # ------------------------------------------------------------------- entry
 def prepare(project, cfg, script=None, image=None, images=None, brief=None,
-            describe=None, refs=None):
+            describe=None, refs=None, video=None, motion=None):
     """Fill in whatever was supplied and mark those stages approved.
 
     Returns a line describing what was done, or None for the normal
     topic-driven run."""
-    if not (script or image or describe):
+    if not (script or image or describe or video):
         return None
 
     d = cfg["defaults"]
@@ -175,25 +234,55 @@ def prepare(project, cfg, script=None, image=None, images=None, brief=None,
     kf_dir.mkdir(exist_ok=True)
     notes = []
 
+    # ---- swap a character in a supplied video ---------------------------
+    # The clip's first frame is swapped, then animated again. What you
+    # get back is the new character doing newly generated motion, not
+    # your original motion with a different actor in it - that needs a
+    # video-to-video model, and there is none here.
+    if video and refs and not script:
+        src = Path(video)
+        if not src.exists():
+            raise EntryError(f"{src} does not exist")
+        if src.suffix.lower() not in VIDEO_EXT:
+            raise EntryError(f"{src.name} is not a video "
+                             f"({', '.join(VIDEO_EXT)})")
+        pics = _refs_in(refs)
+        said = (brief or "").strip()
+        if not said:
+            raise EntryError("--video needs --brief as well: say who is "
+                             "being replaced")
+        frame = _first_frame(src, kf_dir / "s01_source.png")
+        secs = _seconds(src)
+        dur = default_seconds if not secs else max(1, min(default_seconds,
+                                                          round(secs)))
+        move = (motion or "").strip()
+        data = _normalise({"shots": [{
+            "id": "s01", "beat": said[:80],
+            "start_image_prompt": said,
+            "motion_prompt": move,
+            "duration": dur,
+            "swap": {"source": str(frame.resolve()),
+                     "refs": [str(x.resolve()) for x in pics[:2]],
+                     "instruction": said}}]}, default_seconds)
+        supplied = {}
+        notes.append(f"character swap in {src.name}: its first frame is "
+                     f"changed, then animated for {dur}s")
+        if secs and secs > dur:
+            notes.append(f"the clip is {secs:.1f}s but max_clip_seconds is "
+                         f"{default_seconds}, so {dur}s is generated")
+        if not move:
+            notes.append("no motion described, so the animation is the "
+                         "model's own idea of what happens next")
+
     # ---- swap a character in a supplied picture -------------------------
     # The source stays; one subject in it is replaced by the subject in
     # the reference pictures. Qwen Image Edit does this in one pass, so
     # it is the Images stage with different inputs, not a new stage.
-    if refs and image and not script:
+    elif refs and image and not script:
         src = Path(image)
         if not src.exists():
             raise EntryError(f"{src} does not exist")
-        rp = Path(refs)
-        pics = (sorted(x for x in rp.iterdir()
-                       if x.suffix.lower() in IMG_EXT)
-                if rp.is_dir() else [rp])
-        pics = [x for x in pics if x.exists()]
-        if not pics:
-            raise EntryError(f"no reference pictures found in {refs}")
-        if len(pics) > 2:
-            print(f"  NOTE: {len(pics)} references given; Qwen Image Edit "
-                  f"takes two alongside the source, so only "
-                  f"{', '.join(p.name for p in pics[:2])} will be used.")
+        pics = _refs_in(refs)
         said = (brief or "").strip()
         if not said:
             raise EntryError("--refs needs --brief as well: say who is "
@@ -309,7 +398,7 @@ def prepare(project, cfg, script=None, image=None, images=None, brief=None,
         notes.append(f"{len(needed - chained - set(kf))} keyframe(s) still "
                      f"to generate")
 
-    if describe or (refs and image and not script):
+    if describe or (refs and not script and (image or video)):
         project.mark("cast")             # one shot, no cast list
         skipped.append("cast")
         notes.append("no characters to cast, so the run starts at Images")
@@ -319,7 +408,8 @@ def prepare(project, cfg, script=None, image=None, images=None, brief=None,
     # goes, and by stage 6 you can no longer tell where it came in.
     order = ["trend", "plan", "script", "cast", "images", "clips"]
     at = next((s for s in order if not project.approved(s)), "clips")
-    mode = ("swap" if (refs and image and not script) else
+    mode = ("swapvid" if (video and refs and not script) else
+            "swap" if (refs and image and not script) else
             "describe" if describe else
             "image" if (image and not script) else
             "frames" if (script and (images or image)) else
@@ -330,6 +420,7 @@ def prepare(project, cfg, script=None, image=None, images=None, brief=None,
         "images": str(images) if images else None,
         "describe": describe or None,
         "refs": str(refs) if refs else None,
+        "video": str(video) if video else None,
         "mode": mode,
         "at": at,
         "skipped": skipped,
