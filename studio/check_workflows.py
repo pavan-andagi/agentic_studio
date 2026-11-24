@@ -10,7 +10,9 @@ NEEDED = {"image": ["@PROMPT", "@SEED"],
           "upscale": ["@VIDEO"],
           "music": ["@PROMPT", "@SEED", "@DURATION"],
           "ambience": ["@PROMPT", "@SEED"],
-          "edit": ["@PROMPT", "@IMAGE", "@IMAGE2", "@IMAGE3", "@SEED"]}
+          "edit": ["@PROMPT", "@IMAGE", "@IMAGE2", "@IMAGE3", "@SEED"],
+          "animate": ["@VIDEO", "@IMAGE", "@PROMPT", "@POINTS", "@WIDTH",
+                "@HEIGHT", "@FRAMES", "@FPS", "@SEED", "@FILENAME"]}
 OPTIONAL = {"upscale": "only needed with upscale_4k: true",
             "music": "only needed with audio: music: enabled",
             "ambience": "only needed with audio: ambience: enabled",
