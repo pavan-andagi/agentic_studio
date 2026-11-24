@@ -30,17 +30,7 @@ COMFY=$ROOT/ComfyUI
 STUDIO=$ROOT/agentic_studio
 REPO=${STUDIO_REPO:-pavan-andagi/agentic_studio}
 BRANCH=${STUDIO_BRANCH:-video-style-selector}
-# `swap` is a model group, not a mode, and it may appear in either
-# position. On its own it means "just fetch that group" - which is what
-# anyone typing `setup_pod.sh swap` means, and it used to silently run a
-# full install instead.
-WANT_SWAP=0
-ARGS=()
-for a in "$@"; do
-  if [ "$a" = swap ]; then WANT_SWAP=1; else ARGS+=("$a"); fi
-done
-MODE=${ARGS[0]:-all}
-[ "$MODE" = all ] && [ "$WANT_SWAP" = 1 ] && [ ${#ARGS[@]} -eq 0 ] && MODE=models
+MODE=${1:-all}
 LOG=$ROOT/setup_pod.log
 PIP="pip install -q --break-system-packages"
 
@@ -67,27 +57,13 @@ latent_upscale_models|ltx-2.5-latent-spatial-upscaler-x2-bf16-1.0.safetensors|ht
 model_patches|ltx-2.5-duration-head-bf16.safetensors|https://huggingface.co/Lightricks/LTX-2.5/resolve/main/model_patches/ltx-2.5-duration-head-bf16.safetensors|?|video
 checkpoints|ace_step_1.5_turbo_aio.safetensors|https://huggingface.co/Comfy-Org/ace_step_1.5_ComfyUI_files/resolve/main/checkpoints/ace_step_1.5_turbo_aio.safetensors|9.4G|audio
 upscale_models|RealESRGAN_x2.pth|https://huggingface.co/ai-forever/Real-ESRGAN/resolve/main/RealESRGAN_x2.pth|64M|extra
-diffusion_models|wan2.2_animate_14B_fp8_scaled.safetensors|https://huggingface.co/Kijai/WanVideo_comfy_fp8_scaled/resolve/main/Wan22Animate/Wan2_2-Animate-14B_fp8_e4m3fn_scaled_KJ.safetensors|?|swap
-clip_vision|clip_vision_h.safetensors|https://huggingface.co/Comfy-Org/Wan_2.1_ComfyUI_repackaged/resolve/main/split_files/clip_vision/clip_vision_h.safetensors|?|swap
-vae|wan_2.1_vae.safetensors|https://huggingface.co/Comfy-Org/Wan_2.2_ComfyUI_Repackaged/resolve/main/split_files/vae/wan_2.1_vae.safetensors|?|swap
-text_encoders|umt5_xxl_fp8_e4m3fn_scaled.safetensors|https://huggingface.co/Comfy-Org/Wan_2.1_ComfyUI_repackaged/resolve/main/split_files/text_encoders/umt5_xxl_fp8_e4m3fn_scaled.safetensors|?|swap
-loras|lightx2v_I2V_14B_480p_cfg_step_distill_rank64_bf16.safetensors|https://huggingface.co/Kijai/WanVideo_comfy/resolve/main/Lightx2v/lightx2v_I2V_14B_480p_cfg_step_distill_rank64_bf16.safetensors|?|swap
 EOF
 )
 
-# Which groups this run should fetch.
-#
-# The `swap` group is Wan 2.2 Animate - the only thing here that can
-# replace a character in a video and keep the original motion. It is
-# opt-in because it is another ~30GB on top of everything else, and on a
-# pod with no network volume that is 30GB re-fetched after every restart.
-#
-#   bash setup_pod.sh models swap    gets it
-#   bash setup_pod.sh                does not
-want_group() {
+want_group() {                       # which groups this run should fetch
   case "$MODE" in
     cast)  [ "$1" = cast ] ;;
-    *)     [ "$1" != swap ] || [ "${WANT_SWAP:-0}" = 1 ] ;;
+    *)     true ;;
   esac
 }
 
@@ -104,11 +80,9 @@ do_deps() {
   say "System packages"
   if command -v apt-get >/dev/null; then
     apt-get update -qq 2>/dev/null
-    # aria2 is here for the models: HuggingFace throttles one connection,
-    # and the download step uses aria2c when it finds it.
     apt-get install -y -qq ffmpeg espeak-ng libsndfile1 \
-        fonts-dejavu-core aria2 2>/dev/null \
-      && note "ffmpeg, espeak-ng, libsndfile1, DejaVu fonts, aria2" \
+        fonts-dejavu-core 2>/dev/null \
+      && note "ffmpeg, espeak-ng, libsndfile1, DejaVu fonts" \
       || bad "apt-get reported problems - check the log"
   else
     note "no apt-get here; install ffmpeg, espeak-ng, libsndfile1 and a TTF font yourself"
@@ -141,16 +115,10 @@ do_comfy() {
   # Existing nodes are left alone on purpose. An unpinned `git pull` here
   # once dragged in a major diffusers bump mid-session; update a node
   # deliberately, not as a side effect of running setup.
-  nodes=( https://github.com/Kosinkadink/ComfyUI-VideoHelperSuite.git
-          https://github.com/Lightricks/ComfyUI-LTXVideo.git
-          https://github.com/Fannovel16/ComfyUI-Frame-Interpolation.git )
-  # Wan 2.2 Animate needs these two. Only fetched with `swap`, because
-  # every extra node pack is another unpinned repo that can break a pod.
-  if [ "${WANT_SWAP:-0}" = 1 ]; then
-    nodes+=( https://github.com/kijai/ComfyUI-KJNodes.git
-             https://github.com/Fannovel16/comfyui_controlnet_aux.git )
-  fi
-  for r in "${nodes[@]}"; do
+  for r in \
+      https://github.com/Kosinkadink/ComfyUI-VideoHelperSuite.git \
+      https://github.com/Lightricks/ComfyUI-LTXVideo.git \
+      https://github.com/Fannovel16/ComfyUI-Frame-Interpolation.git ; do
     d="$COMFY/custom_nodes/$(basename "$r" .git)"
     [ -d "$d" ] && { note "$(basename "$d") ok ($(git -C "$d" rev-parse --short HEAD 2>/dev/null))"; continue; }
     git clone --depth 1 "$r" "$d" && note "cloned $(basename "$d")"
@@ -159,18 +127,12 @@ do_comfy() {
     $PIP -r "$COMFY/custom_nodes/ComfyUI-VideoHelperSuite/requirements.txt"
   [ -f "$COMFY/custom_nodes/ComfyUI-LTXVideo/requirements.txt" ] && \
     $PIP -r "$COMFY/custom_nodes/ComfyUI-LTXVideo/requirements.txt"
-  if [ "${WANT_SWAP:-0}" = 1 ]; then
-    for n in ComfyUI-KJNodes comfyui_controlnet_aux; do
-      [ -f "$COMFY/custom_nodes/$n/requirements.txt" ] && \
-        $PIP -r "$COMFY/custom_nodes/$n/requirements.txt"
-    done
-  fi
   # Frame-Interpolation's own install.py dies on cupy-wheel / pkg_resources
   note "frame-interpolation deps (skipping its install.py on purpose)"
   $PIP cupy-cuda12x einops opencv-contrib-python kornia scipy \
     || note "cupy install reported problems"
 
-  mkdir -p "$COMFY/models"/{diffusion_models,text_encoders,vae,loras,checkpoints,upscale_models,latent_upscale_models,model_patches,clip_vision}
+  mkdir -p "$COMFY/models"/{diffusion_models,text_encoders,vae,loras,checkpoints,upscale_models,latent_upscale_models,model_patches}
 }
 
 # ----------------------------------------------------------------- studio
@@ -264,8 +226,7 @@ do_models() {
       rm -f "$dest"
     fi
     [ "$MODE" = check ] && { note "MISSING $dir/$file  (~$size)"; fail=$((fail+1)); continue; }
-    note "get    $file  (~$size)$(command -v aria2c >/dev/null \
-      && echo "  [aria2c, 8 connections]" || echo "  [wget, 1 connection]")"
+    note "get    $file  (~$size)"
     mkdir -p "$(dirname "$dest")"
     # Downloaded to .part and moved into place only once it checks out,
     # so an interrupted run leaves no file that looks finished. No -c:
@@ -273,25 +234,7 @@ do_models() {
     # of restarting, which is exactly how a file ends up twice its size.
     local part="$dest.part"
     rm -f "$part"
-    # HuggingFace throttles a single connection hard - often a fifth of
-    # what the pod can actually pull. aria2c opens several and is
-    # routinely 5x faster on the big files. wget stays as the fallback
-    # so nothing breaks where aria2c is missing.
-    if command -v aria2c >/dev/null; then
-      if aria2c -x 8 -s 8 -k 16M --continue=false --allow-overwrite=true \
-           --summary-interval=10 --console-log-level=warn \
-           ${HF_TOKEN:+--header="Authorization: Bearer $HF_TOKEN"} \
-           -d "$(dirname "$part")" -o "$(basename "$part")" "$url"; then
-        dl_ok=1
-      else
-        dl_ok=0
-      fi
-    elif wget -q --show-progress "${hdr[@]}" -O "$part" "$url"; then
-      dl_ok=1
-    else
-      dl_ok=0
-    fi
-    if [ "$dl_ok" = 1 ]; then
+    if wget -q --show-progress "${hdr[@]}" -O "$part" "$url"; then
       if [ "$(stat -c%s "$part")" -lt 100000 ]; then
         bad "       ^ got $(stat -c%s "$part") bytes - that is an error page, removing"
         head -c 200 "$part" | tr -d '\0' | tee -a "$LOG"
@@ -439,24 +382,8 @@ case "$MODE" in
   verify) do_verify ;;
   deps)   do_deps; do_check ;;
   check)  do_check; do_models ;;
-  models) do_models
-          [ "$WANT_SWAP" = 1 ] && do_comfy
-          do_check ;;
-  nodes)  do_comfy ;;
-  all)    do_deps; do_comfy; do_studio; do_models; do_check ;;
-  *)      bad "unknown: $MODE"
-          note ""
-          note "  setup_pod.sh              everything except the swap models"
-          note "  setup_pod.sh all swap     everything, swap models included"
-          note "  setup_pod.sh swap         only the swap models and nodes"
-          note "  setup_pod.sh models       models only"
-          note "  setup_pod.sh nodes        ComfyUI and its custom nodes only"
-          note "  setup_pod.sh deps         system and python packages only"
-          note "  setup_pod.sh check        what is present, what is missing"
-          note "  setup_pod.sh verify       are the model files intact"
-          note "  setup_pod.sh url          the dashboard link"
-          note "  setup_pod.sh stop         stop ComfyUI and the studio"
-          exit 2 ;;
+  models) do_models; do_check ;;
+  *)      do_deps; do_comfy; do_studio; do_models; do_check ;;
 esac
 
 say "Done - full log at $LOG"
