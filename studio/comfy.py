@@ -26,7 +26,7 @@ FIELDS = {
     "@IMAGE2": ["image"],
     "@IMAGE3": ["image"],
     "@LAST_IMAGE": ["image"],
-    "@VIDEO": ["video"],
+    "@VIDEO": ["video", "file"],
     "@POINTS": ["coordinates", "points_store"],
     "@WIDTH": ["width", "value"],
     "@HEIGHT": ["height", "value"],
