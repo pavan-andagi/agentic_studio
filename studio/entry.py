@@ -56,29 +56,6 @@ SHOT_DEFAULTS = {
 VIDEO_EXT = (".mp4", ".mov", ".webm", ".mkv", ".m4v")
 
 
-def _first_frame(src, dest):
-    """Frame one of a clip, as a PNG. Raises if ffmpeg cannot do it.
-
-    A swap in a video is a swap in its first frame, animated again. The
-    original motion is not preserved - that needs a video-to-video model,
-    which is not on this machine - so the frame is the honest unit of
-    work here."""
-    import subprocess
-    try:
-        subprocess.run(["ffmpeg", "-y", "-v", "error", "-i", str(src),
-                        "-frames:v", "1", str(dest)],
-                       check=True, capture_output=True, timeout=120)
-    except FileNotFoundError:
-        raise EntryError("ffmpeg is not installed, so the first frame of "
-                         "the clip cannot be read")
-    except subprocess.CalledProcessError as e:
-        raise EntryError(f"could not read {Path(src).name}: "
-                         f"{e.stderr.decode(errors='replace')[:160]}")
-    if not Path(dest).exists():
-        raise EntryError(f"no frame came out of {Path(src).name}")
-    return Path(dest)
-
-
 def _seconds(src):
     """How long the clip is, or None if ffprobe cannot say."""
     import subprocess
@@ -183,7 +160,7 @@ def _bind_images(shots, supplied, project, aspect):
     return out
 
 
-def _refs_in(refs):
+def _refs_in(refs, limit=2):
     """The reference pictures, capped at what Qwen Edit can take.
 
     Three images per pass, one of which is the picture being changed, so
@@ -195,11 +172,11 @@ def _refs_in(refs):
     pics = [x for x in pics if x.exists()]
     if not pics:
         raise EntryError(f"no reference pictures found in {refs}")
-    if len(pics) > 2:
-        print(f"  NOTE: {len(pics)} references given; Qwen Image Edit takes "
-              f"two alongside the picture being changed, so only "
-              f"{', '.join(x.name for x in pics[:2])} will be used.")
-    return pics
+    if len(pics) > limit:
+        print(f"  NOTE: {len(pics)} references given; this mode uses "
+              f"{limit}, so only "
+              f"{', '.join(x.name for x in pics[:limit])} will be used.")
+    return pics[:limit]
 
 
 def _check_aspect(path, aspect, key):
@@ -235,10 +212,10 @@ def prepare(project, cfg, script=None, image=None, images=None, brief=None,
     notes = []
 
     # ---- swap a character in a supplied video ---------------------------
-    # The clip's first frame is swapped, then animated again. What you
-    # get back is the new character doing newly generated motion, not
-    # your original motion with a different actor in it - that needs a
-    # video-to-video model, and there is none here.
+    # Wan 2.2 Animate takes the clip itself and keeps its motion, so
+    # there is no keyframe to extract and nothing for Cast or Images to
+    # do. The run begins at Clips, where the swap happens in place of an
+    # ordinary i2v generation.
     if video and refs and not script:
         src = Path(video)
         if not src.exists():
@@ -246,33 +223,27 @@ def prepare(project, cfg, script=None, image=None, images=None, brief=None,
         if src.suffix.lower() not in VIDEO_EXT:
             raise EntryError(f"{src.name} is not a video "
                              f"({', '.join(VIDEO_EXT)})")
-        pics = _refs_in(refs)
+        pics = _refs_in(refs, limit=1)
         said = (brief or "").strip()
         if not said:
             raise EntryError("--video needs --brief as well: say who is "
                              "being replaced")
-        frame = _first_frame(src, kf_dir / "s01_source.png")
         secs = _seconds(src)
         dur = default_seconds if not secs else max(1, min(default_seconds,
                                                           round(secs)))
-        move = (motion or "").strip()
         data = _normalise({"shots": [{
             "id": "s01", "beat": said[:80],
-            "start_image_prompt": said,
-            "motion_prompt": move,
+            "motion_prompt": (motion or "").strip() or said,
             "duration": dur,
-            "swap": {"source": str(frame.resolve()),
-                     "refs": [str(x.resolve()) for x in pics[:2]],
-                     "instruction": said}}]}, default_seconds)
+            "animate": {"video": str(src.resolve()),
+                        "reference": str(pics[0].resolve()),
+                        "instruction": said,
+                        "point": None}}]}, default_seconds)
         supplied = {}
-        notes.append(f"character swap in {src.name}: its first frame is "
-                     f"changed, then animated for {dur}s")
+        notes.append(f"character swap in {src.name}, keeping its motion")
         if secs and secs > dur:
             notes.append(f"the clip is {secs:.1f}s but max_clip_seconds is "
-                         f"{default_seconds}, so {dur}s is generated")
-        if not move:
-            notes.append("no motion described, so the animation is the "
-                         "model's own idea of what happens next")
+                         f"{default_seconds}, so the first {dur}s is swapped")
 
     # ---- swap a character in a supplied picture -------------------------
     # The source stays; one subject in it is replaced by the subject in
@@ -401,6 +372,12 @@ def prepare(project, cfg, script=None, image=None, images=None, brief=None,
     if describe or (refs and not script and (image or video)):
         project.mark("cast")             # one shot, no cast list
         skipped.append("cast")
+    if video and refs and not script:
+        project.mark("images")           # Wan works on the clip, not a frame
+        skipped.append("images")
+        notes.append("the clip itself is the input, so the run starts at "
+                     "Clips")
+    elif describe:
         notes.append("no characters to cast, so the run starts at Images")
 
     # Which stage this run actually begins at. Written once, here, rather

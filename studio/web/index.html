@@ -821,8 +821,8 @@ var ENTRY=[
  {at:'images',mode:'describe',n:'Description', s:'words, drawn here'},
  {at:'images',mode:'swap',    n:'Character swap',
   s:'a picture, one subject replaced'},
- {at:'images',mode:'swapvid', n:'Character swap',
-  s:'a clip, frame swapped and re-animated'},
+ {at:'clips', mode:'swapvid', n:'Character swap',
+  s:'your clip, its motion kept'},
  {at:'clips', mode:'image',   n:'Pictures',    s:'your own keyframes'}];
 /* Two ways in can land on the same stage - a description and a swap
    both arrive at Image creation. Show the one this run used; otherwise
@@ -1090,7 +1090,7 @@ var MODES=[['topic','Topic','a brief; the studio writes everything'],
  ['describe','Describe a picture','the studio draws it, then animates it'],
  ['swap','Character swap: Image','one subject in your picture, replaced'],
  ['swapvid','Character swap: Video',
-  'its first frame is swapped, then animated']];
+  'your clip, one character replaced, motion kept']];
 function renderNew(){if(!NEW)return '';
  // Picking a mode changes what the obvious stop point is: somebody who
  // described a picture most likely wants the picture.
@@ -1146,9 +1146,9 @@ function renderNew(){if(!NEW)return '';
  +(isVid?'<label>What happens in the clip</label>'
   +'<textarea id="mo" placeholder="the dog walks left, then jumps over the box">'
   +esc(NEW.motion||'')+'</textarea>'
-  +'<div class="hint">The motion is generated fresh from the swapped '
-  +'frame, so describe the action you want. The original clip\'s exact '
-  +'movement cannot be carried over.</div>':'')
+  +'<div class="hint">The clip\'s own motion is kept. This text only '
+  +'steers the look of the replacement - leave it blank if the swap '
+  +'line already says enough.</div>':'')
  +'<label>Stop after</label><select id="un">'+STOPS.map(function(x){
    return '<option value="'+x[0]+'"'+(NEW.until===x[0]?' selected':'')+'>'
     +esc(x[1])+'</option>'}).join('')+'</select>'

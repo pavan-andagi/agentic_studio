@@ -23,6 +23,64 @@ Return JSON: {"edits": [{"shot": str, "suggestion": str}], "music": str,
               "youtube_description": str}}"""
 
 
+def animate_of(s):
+    """A shot that is a character swap in a supplied clip, or None.
+
+    {"video": path, "reference": path, "instruction": str, "point": [x, y]}
+
+    This is not a keyframe being animated - it is somebody else's clip
+    with one character replaced, motion and all. Wan 2.2 Animate takes
+    the video itself, so there is no keyframe to make and nothing for
+    the Images stage to do."""
+    a = s.get("animate")
+    if isinstance(a, dict) and a.get("video") and a.get("reference"):
+        return a
+    return None
+
+
+def _wan_frames(seconds, fps):
+    """Wan's latent packing wants 4n+1 frames, so round to one.
+
+    Asking for 48 silently becomes something else inside the node; being
+    explicit here means the clip is the length the script said."""
+    n = max(5, int(round(float(seconds) * float(fps))))
+    return n - ((n - 1) % 4)
+
+
+def _point(a, w, h):
+    """Where SAM 2 should look for the character being replaced.
+
+    The centre of the frame is right surprisingly often - a subject
+    worth replacing is usually the thing the camera is pointed at - and
+    it means a swap can run unattended. An explicit point overrides it,
+    as a fraction of the frame (0.5, 0.4) or as pixels (320, 512)."""
+    pt = a.get("point")
+    if isinstance(pt, (list, tuple)) and len(pt) == 2:
+        x, y = float(pt[0]), float(pt[1])
+        if 0 < x <= 1 and 0 < y <= 1:          # a fraction of the frame
+            x, y = x * w, y * h
+        return [{"x": int(round(x)), "y": int(round(y))}]
+    return [{"x": w // 2, "y": h // 2}]
+
+
+def _repoint(a, text):
+    """"point 0.3 0.6" or "point 320 512" -> [x, y], else None.
+
+    Anything else is ordinary feedback and goes to the rewriter."""
+    if not a:
+        return None
+    words = str(text).replace(",", " ").split()
+    if not words or words[0].lower() not in ("point", "points", "pt"):
+        return None
+    nums = []
+    for word in words[1:]:
+        try:
+            nums.append(float(word))
+        except ValueError:
+            continue
+    return nums[:2] if len(nums) >= 2 else None
+
+
 def _video(files):
     vids = [f for f in files if f.suffix.lower() in (".mp4", ".webm", ".mov")]
     if not vids:
@@ -53,32 +111,68 @@ def run(ctx, feedback=None, items=None):
         if feedback and (not items or sid in items):
             _rewrite(ctx, s, feedback)
             p.write_json("3_script.json", script)
+        an = animate_of(s)
         while True:
-            if s["start_from"] == "previous_last_frame" and idx > 0:
-                start = last_frame(done[shots[idx - 1]["id"]],
-                                   p.dir / "keyframes" / f"{sid}_from_prev.png")
+            if an:
+                # A swap replaces a character in a clip that already
+                # exists, so there is no keyframe and no @DURATION -
+                # Wan counts frames, not seconds.
+                wfk = "animate"
+                if not (cfg["comfy"]["workflows"] or {}).get(wfk):
+                    raise RuntimeError(
+                        "this shot is a character swap, but config.yaml has "
+                        "no comfy.workflows.animate - add "
+                        "workflows/wan_animate.json")
+                fps = int(d["fps"])
+                values = {
+                    "@VIDEO": ctx.comfy.upload(an["video"]),
+                    "@IMAGE": ctx.comfy.upload(an["reference"]),
+                    "@PROMPT": (s["motion_prompt"]
+                                or an.get("instruction") or ""),
+                    "@POINTS": json.dumps(_point(an, w, h)),
+                    "@WIDTH": w, "@HEIGHT": h,
+                    "@FRAMES": _wan_frames(s["duration"], fps),
+                    "@FPS": fps, "@SEED": random.randint(1, 2**31),
+                    "@FILENAME": f"studio/{p.dir.name}_{sid}"}
+                wf = cfg["comfy"]["workflows"][wfk]
+                what = f"swap, {s['duration']}s"
             else:
-                start = kf[f"{sid}_start"]
-            values = {"@PROMPT": s["motion_prompt"],
-                      "@IMAGE": ctx.comfy.upload(start),
-                      "@SEED": random.randint(1, 2**31), "@WIDTH": w,
-                      "@HEIGHT": h, "@DURATION": s["duration"],
-                      "@FPS": d["fps"], "@FILENAME": f"studio/{p.dir.name}_{sid}"}
-            wf = cfg["comfy"]["workflows"]["i2v"]
-            if s["mode"] == "flf2v":
-                values["@LAST_IMAGE"] = ctx.comfy.upload(kf[f"{sid}_end"])
-                wf = cfg["comfy"]["workflows"]["flf2v"]
-            print(f"\n[Clip agent] {sid} ({s['mode']}, {s['duration']}s) ...")
-            p.set_status("clips", "working", f"generating clip {sid} ({s['mode']}, {s['duration']} s)")
+                if s["start_from"] == "previous_last_frame" and idx > 0:
+                    start = last_frame(
+                        done[shots[idx - 1]["id"]],
+                        p.dir / "keyframes" / f"{sid}_from_prev.png")
+                else:
+                    start = kf[f"{sid}_start"]
+                values = {"@PROMPT": s["motion_prompt"],
+                          "@IMAGE": ctx.comfy.upload(start),
+                          "@SEED": random.randint(1, 2**31), "@WIDTH": w,
+                          "@HEIGHT": h, "@DURATION": s["duration"],
+                          "@FPS": d["fps"],
+                          "@FILENAME": f"studio/{p.dir.name}_{sid}"}
+                wf = cfg["comfy"]["workflows"]["i2v"]
+                if s["mode"] == "flf2v":
+                    values["@LAST_IMAGE"] = ctx.comfy.upload(kf[f"{sid}_end"])
+                    wf = cfg["comfy"]["workflows"]["flf2v"]
+                what = f"{s['mode']}, {s['duration']}s"
+            print(f"\n[Clip agent] {sid} ({what}) ...")
+            p.set_status("clips", "working",
+                         f"generating clip {sid} ({what})")
             vid = _video(ctx.comfy.run(wf, values, p.dir / "clips" / "takes",
                                        label=sid))
             info, issues = validate(vid)
             sheet = contact_sheet(vid, p.dir / "sheets" / f"{sid}.png")
             open_file(vid)
+            where = ""
+            if an:
+                pt = _point(an, w, h)[0]
+                where = (f"\nReplaced: the subject at ({pt['x']}, {pt['y']})"
+                         f" - if that found the wrong one, say so and give "
+                         f"a point, e.g. 'point 0.3 0.6'")
             action, val = gate(
                 f"Clip {sid}", f"{s['beat']}\n{info['width']}x{info['height']}"
                 f" {info['fps']}fps {info['duration']}s audio={info['audio']}"
                 f"\nAuto-check: {'; '.join(issues) if issues else 'clean'}"
+                f"{where}"
                 f"\nVideo: {vid}\nFrames: {sheet}", vid,
                 "[t] retake with a new seed   or a path to your own clip")
             if action == "approve" or (action == "pick" and Path(val).exists()):
@@ -96,6 +190,16 @@ def run(ctx, feedback=None, items=None):
             if action == "revise":
                 p.log("clips", "human", f"{sid}: {val}")
                 p.event("clips", "agent_feedback", f"{sid}: {val}")
+                # On a swap, the usual complaint is that it replaced the
+                # wrong subject, and no amount of prompt rewriting fixes
+                # that - it is a coordinate. "point 0.3 0.6" says where.
+                moved = _repoint(an, val) if an else None
+                if moved:
+                    s["animate"]["point"] = moved
+                    p.write_json("3_script.json", script)
+                    p.event("clips", "human_pick",
+                            f"{sid}: looking at {moved} instead")
+                    continue
                 _rewrite(ctx, s, val, issues)
                 p.write_json("3_script.json", script)
                 continue
