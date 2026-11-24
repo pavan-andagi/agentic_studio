@@ -63,15 +63,16 @@ text_encoders|gemma4-12b-with-proj-ltx-2.5-comfy-int8-convrot.safetensors|https:
 text_encoders|gemma4_e2b_it_int8_convrot.safetensors|https://huggingface.co/Comfy-Org/gemma-4/resolve/main/text_encoders/gemma4_e2b_it_int8_convrot.safetensors|4.9G|video
 vae|ltx-2.5-video-vae-bf16.safetensors|https://huggingface.co/Lightricks/LTX-2.5/resolve/main/vae/ltx-2.5-video-vae-bf16.safetensors|1.4G|video
 vae|ltx-2.5-audio-vae-bf16.safetensors|https://huggingface.co/Lightricks/LTX-2.5/resolve/main/vae/ltx-2.5-audio-vae-bf16.safetensors|348M|video
-latent_upscale_models|ltx-2.5-latent-spatial-upscaler-x2-bf16-1.0.safetensors|https://huggingface.co/Lightricks/LTX-2.5/resolve/main/latent_upscale_models/ltx-2.5-latent-spatial-upscaler-x2-bf16-1.0.safetensors|?|video
-model_patches|ltx-2.5-duration-head-bf16.safetensors|https://huggingface.co/Lightricks/LTX-2.5/resolve/main/model_patches/ltx-2.5-duration-head-bf16.safetensors|?|video
+latent_upscale_models|ltx-2.5-latent-spatial-upscaler-x2-bf16-1.0.safetensors|https://huggingface.co/Lightricks/LTX-2.5/resolve/main/latent_upscale_models/ltx-2.5-latent-spatial-upscaler-x2-bf16-1.0.safetensors|950M|video
+model_patches|ltx-2.5-duration-head-bf16.safetensors|https://huggingface.co/Lightricks/LTX-2.5/resolve/main/model_patches/ltx-2.5-duration-head-bf16.safetensors|3.7M|video
 checkpoints|ace_step_1.5_turbo_aio.safetensors|https://huggingface.co/Comfy-Org/ace_step_1.5_ComfyUI_files/resolve/main/checkpoints/ace_step_1.5_turbo_aio.safetensors|9.4G|audio
 upscale_models|RealESRGAN_x2.pth|https://huggingface.co/ai-forever/Real-ESRGAN/resolve/main/RealESRGAN_x2.pth|64M|extra
-diffusion_models|wan2.2_animate_14B_fp8_scaled.safetensors|https://huggingface.co/Kijai/WanVideo_comfy_fp8_scaled/resolve/main/Wan22Animate/Wan2_2-Animate-14B_fp8_e4m3fn_scaled_KJ.safetensors|?|swap
-clip_vision|clip_vision_h.safetensors|https://huggingface.co/Comfy-Org/Wan_2.1_ComfyUI_repackaged/resolve/main/split_files/clip_vision/clip_vision_h.safetensors|?|swap
-vae|wan_2.1_vae.safetensors|https://huggingface.co/Comfy-Org/Wan_2.2_ComfyUI_Repackaged/resolve/main/split_files/vae/wan_2.1_vae.safetensors|?|swap
-text_encoders|umt5_xxl_fp8_e4m3fn_scaled.safetensors|https://huggingface.co/Comfy-Org/Wan_2.1_ComfyUI_repackaged/resolve/main/split_files/text_encoders/umt5_xxl_fp8_e4m3fn_scaled.safetensors|?|swap
-loras|lightx2v_I2V_14B_480p_cfg_step_distill_rank64_bf16.safetensors|https://huggingface.co/Kijai/WanVideo_comfy/resolve/main/Lightx2v/lightx2v_I2V_14B_480p_cfg_step_distill_rank64_bf16.safetensors|?|swap
+diffusion_models|Wan2_2-Animate-14B_fp8_e4m3fn_scaled_KJ.safetensors|https://huggingface.co/Kijai/WanVideo_comfy_fp8_scaled/resolve/main/Wan22Animate/Wan2_2-Animate-14B_fp8_e4m3fn_scaled_KJ.safetensors|18G|swap
+clip_vision|clip_vision_h.safetensors|https://huggingface.co/Comfy-Org/Wan_2.1_ComfyUI_repackaged/resolve/main/split_files/clip_vision/clip_vision_h.safetensors|1.2G|swap
+vae|wan_2.1_vae.safetensors|https://huggingface.co/Comfy-Org/Wan_2.2_ComfyUI_Repackaged/resolve/main/split_files/vae/wan_2.1_vae.safetensors|243M|swap
+text_encoders|umt5_xxl_fp8_e4m3fn_scaled.safetensors|https://huggingface.co/Comfy-Org/Wan_2.1_ComfyUI_repackaged/resolve/main/split_files/text_encoders/umt5_xxl_fp8_e4m3fn_scaled.safetensors|6.3G|swap
+loras|lightx2v_I2V_14B_480p_cfg_step_distill_rank64_bf16.safetensors|https://huggingface.co/Kijai/WanVideo_comfy/resolve/main/Lightx2v/lightx2v_I2V_14B_480p_cfg_step_distill_rank64_bf16.safetensors|704M|swap
+loras|WanAnimate_relight_lora_fp16.safetensors|https://huggingface.co/Kijai/WanVideo_comfy/resolve/main/LoRAs/Wan22_relight/WanAnimate_relight_lora_fp16.safetensors|1.34G|swap
 EOF
 )
 
@@ -148,7 +149,8 @@ do_comfy() {
   # every extra node pack is another unpinned repo that can break a pod.
   if [ "${WANT_SWAP:-0}" = 1 ]; then
     nodes+=( https://github.com/kijai/ComfyUI-KJNodes.git
-             https://github.com/Fannovel16/comfyui_controlnet_aux.git )
+             https://github.com/Fannovel16/comfyui_controlnet_aux.git
+             https://github.com/kijai/ComfyUI-segment-anything-2.git )
   fi
   for r in "${nodes[@]}"; do
     d="$COMFY/custom_nodes/$(basename "$r" .git)"
@@ -160,7 +162,7 @@ do_comfy() {
   [ -f "$COMFY/custom_nodes/ComfyUI-LTXVideo/requirements.txt" ] && \
     $PIP -r "$COMFY/custom_nodes/ComfyUI-LTXVideo/requirements.txt"
   if [ "${WANT_SWAP:-0}" = 1 ]; then
-    for n in ComfyUI-KJNodes comfyui_controlnet_aux; do
+    for n in ComfyUI-KJNodes comfyui_controlnet_aux ComfyUI-segment-anything-2; do
       [ -f "$COMFY/custom_nodes/$n/requirements.txt" ] && \
         $PIP -r "$COMFY/custom_nodes/$n/requirements.txt"
     done
