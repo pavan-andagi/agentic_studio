@@ -10,6 +10,59 @@ import anthropic
 
 from . import approval
 
+# The API takes these four and rejects everything else - including a
+# JPEG sent under a PNG label, which is what happens if you assume.
+SIGNATURES = (
+    (b"\x89PNG\r\n\x1a\n", "image/png"),
+    (b"\xff\xd8\xff", "image/jpeg"),
+    (b"GIF87a", "image/gif"),
+    (b"GIF89a", "image/gif"),
+)
+OK_TYPES = {"image/png", "image/jpeg", "image/gif", "image/webp"}
+
+# Past this on the long edge the API gains nothing: it resizes anyway,
+# and a contact sheet sent at 4000px is tokens spent on pixels that get
+# thrown away. The analyser sends a dozen at a time, so it adds up.
+MAX_EDGE = 1568
+
+
+def image_block(path):
+    """One image, correctly labelled and not absurdly large.
+
+    The type is read from the file's own first bytes rather than its
+    name or an assumption. A picture in some other format is converted
+    rather than refused, because the person supplied a picture."""
+    raw = Path(path).read_bytes()
+    kind = next((t for sig, t in SIGNATURES if raw.startswith(sig)), "")
+    if not kind and raw[:4] == b"RIFF" and raw[8:12] == b"WEBP":
+        kind = "image/webp"
+
+    try:
+        from io import BytesIO
+
+        from PIL import Image
+        im = Image.open(BytesIO(raw))
+        big = max(im.size) > MAX_EDGE
+        if kind not in OK_TYPES or big:
+            if big:
+                im.thumbnail((MAX_EDGE, MAX_EDGE), Image.LANCZOS)
+            buf = BytesIO()
+            im.convert("RGB").save(buf, "PNG")
+            raw, kind = buf.getvalue(), "image/png"
+    except ImportError:
+        pass
+    except Exception:                                        # noqa: BLE001
+        # Unreadable by PIL but the signature was good: send it as it is
+        # and let the API have the last word.
+        pass
+
+    if kind not in OK_TYPES:
+        raise ValueError(f"{Path(path).name} is not an image the API takes "
+                         f"(png, jpeg, gif or webp)")
+    return {"type": "image",
+            "source": {"type": "base64", "media_type": kind,
+                       "data": base64.b64encode(raw).decode()}}
+
 
 class LLM:
     def __init__(self, model, max_tokens=12000, web_search_max_uses=8):
@@ -22,9 +75,7 @@ class LLM:
         """Send a prompt (optionally with images / web search), return JSON."""
         content = []
         for img in images or []:
-            data = base64.b64encode(Path(img).read_bytes()).decode()
-            content.append({"type": "image", "source": {
-                "type": "base64", "media_type": "image/png", "data": data}})
+            content.append(image_block(img))
         content.append({"type": "text", "text": prompt})
 
         kwargs = {}
