@@ -1004,7 +1004,16 @@ function previewHtml(d,rel){if(!rel)return'';var u=fileUrl(d.name,rel),x=rel.toL
 function renderReview(d){var p=d.pending,h=headline(d);
  // a new question clears whichever bubble you had open
  if(bubFor!==(p&&p.id)){bubFor=p&&p.id;bubPick=null;bubManual=false}
- if(!p){var lb=liveBoard(d),extra=h.k==='stopped'?'<div class="hint">Resume it with:  python -m studio.main resume '+esc(d.name)+'</div>'
+ if(!p){var lb=liveBoard(d),extra=h.k==='stopped'?'<div class="gate">'
+   +'<div class="m">This one stopped where you told it to. Carrying on '
+   +'picks up at the first stage that has not been approved.</div>'
+   +(resuming===d.name?'<div style="margin-top:10px">'
+     +'<button class="ok" disabled>Starting …</button></div>'
+    :'<div style="margin-top:10px">'
+     +'<button class="ok" data-resume="'+esc(d.name)+'">Carry on'
+     +'</button></div>')
+   +(resumeErr?'<div class="m bad">'+esc(resumeErr)+'</div>':'')
+   +'</div>'
    :(lb?'<div class="hint">Everything this agent has made so far stays here. Picking opens once it has finished the whole set.</div>'
       :'<div class="hint">When a stage is ready, your review appears here. You can also answer in the terminal.</div>');
   return'<div class="card"><div class="ct">'+esc(h.t)+'</div>'+lb+extra+'</div>'+clipStrip(d)}
@@ -1203,14 +1212,22 @@ function analyseForm(kind,m){
    +'<h3>The showrunner on '+esc(NEW.name)+'</h3>'
    +'<pre class="anlog">'+esc(NEW.verdict)+'</pre>'
    +(NEW.ready
-     ? '<div class="m" style="margin-top:10px">The project is written '
-       +'and waiting. Start it from the project list, or on the pod:'
-       +'</div><div class="cb"><pre>python -m studio.main resume '
-       +esc(NEW.name)+'</pre></div>'
+     ? '<div class="gate">'
+       +'<div class="m">The project is written and waiting'
+       +(NEW.at?' at <b>'+esc(String(NEW.at).toUpperCase())+'</b>':'')
+       +'. Nothing has run yet, and nothing costs anything until you '
+       +'start it.</div>'
+       +(NEW.err?'<div class="m bad">'+esc(NEW.err)+'</div>':'')
+       +'<div style="margin-top:10px">'
+       +(NEW.starting
+         ? '<button class="ok" disabled>Starting …</button>'
+         : '<button class="ok" data-go="1">Start the run</button>')
+       +' <button data-newclose="1">Not yet</button></div></div>'
      : '<div class="m" style="margin-top:10px">Nothing was created. '
-       +'The report is still in '+esc(NEW.name)+'/analysis.md.</div>')
-   +'<div style="margin-top:14px"><button data-newclose="1">Close</button>'
-   +'</div></div></div>';
+       +'The report is still in '+esc(NEW.name)+'/analysis.md.</div>'
+       +'<div style="margin-top:14px">'
+       +'<button data-newclose="1">Close</button></div>')
+   +'</div></div>';
  if(NEW.sending)
   return '<div class="newp" data-newbg="1"><div class="newb">'
    +'<h3>The showrunner is reading it</h3>'
@@ -1607,6 +1624,7 @@ function toggleAlerts(on){
   if(window.Notification&&Notification.permission==='default')
    Notification.requestPermission()}}
 /* ---------------- page wiring ---------------- */
+var resuming=null,resumeErr='';
 var data=null,lastSig=null,proj=null,sel=null,tab='review',el={},
     lastDefault=null,projManual=false;
 function curStage(){if(sel)return sel;var c=(data.state.current||{}).stage;if(c)return c;var ap=data.state.approved||{};for(var i=0;i<ST.length;i++)if(ST[i].id!=='final'&&!ap[ST[i].id])return ST[i].id;return'final'}
@@ -1801,7 +1819,8 @@ function verdictPoll(name,n){
  .then(function(j){
    if(!NEW)return;
    if(j.done){NEW.sending=false;NEW.verdict=j.verdict;
-     NEW.ready=!!j.ready;return paintNew()}
+     NEW.ready=!!j.ready;NEW.at=(j.decision||{}).start_stage||'';
+     return paintNew()}
    NEW.log=j.log||'';paintNew();
    if(n>120){NEW.sending=false;
      NEW.err='the showrunner is taking a long time - see '
@@ -1809,6 +1828,28 @@ function verdictPoll(name,n){
    setTimeout(function(){verdictPoll(name,n+1)},5000)})
  .catch(function(){setTimeout(function(){verdictPoll(name,n+1)},5000)})}
 
+/* Start a project that is already on disk: the showrunner's "go", or a
+   run that stopped at a stage limit. Same endpoint either way, since
+   studio.main resume works out where it left off by itself. */
+function startExisting(name,after){
+ fetch(q('/api/start'),{method:'POST',
+  headers:{'Content-Type':'application/json'},
+  body:JSON.stringify({name:name})})
+ .then(function(r){return r.json()})
+ .then(function(j){
+   if(j.error)return after(j.error+(j.log?'\n\n'+j.log:''));
+   after(null,j)})
+ .catch(function(){after('could not reach the studio')})}
+function verdictGo(){
+ if(!NEW||NEW.starting)return;
+ NEW.starting=true;NEW.err='';paintNew();
+ var name=NEW.name;
+ startExisting(name,function(err){
+  if(err){if(NEW){NEW.starting=false;NEW.err=err;paintNew()}return}
+  // It is running now, so the board is the place to watch it.
+  NEW=null;paintNew();
+  projManual=true;proj=name;lastSig=null;
+  setTimeout(function(){load()},900)})}
 function analyseStart(){
  newRead();
  var kind=(NEW.mode==='promptvid')?'video':'image';
@@ -1884,7 +1925,7 @@ function newStart(){newRead();NEW.err='';
    setTimeout(function(){load()},900)})
   .catch(function(){NEW.busy=false;
    NEW.err='the dashboard could not be reached';paintNew()})}
-function onClick(e){var t=e.target.closest('[data-propose],[data-copy],[data-adv],[data-newopen],[data-newclose],[data-mode],[data-start],[data-bub],[data-mic],[data-speak],[data-autosend],[data-ans],[data-send],[data-tab],[data-follow],[data-allfb],[data-stage],[data-view],[data-msg]');if(!t)return;
+function onClick(e){var t=e.target.closest('[data-go],[data-resume],[data-propose],[data-copy],[data-adv],[data-newopen],[data-newclose],[data-mode],[data-start],[data-bub],[data-mic],[data-speak],[data-autosend],[data-ans],[data-send],[data-tab],[data-follow],[data-allfb],[data-stage],[data-view],[data-msg]');if(!t)return;
  if(t.dataset.newopen!==undefined){newOpen();return}
  if(t.dataset.newclose!==undefined){NEW=null;paintNew();return}
  if(t.dataset.adv!==undefined){e.preventDefault();newRead();NEW.adv=true;
@@ -1896,6 +1937,15 @@ function onClick(e){var t=e.target.closest('[data-propose],[data-copy],[data-adv
   else newStart();
   return}
  if(t.dataset.propose!==undefined){proposeStart();return}
+ if(t.dataset.go!==undefined){verdictGo();return}
+ if(t.dataset.resume!==undefined){
+  var rn=t.dataset.resume;
+  if(resuming)return;
+  resuming=rn;resumeErr='';render();
+  startExisting(rn,function(err){
+   resuming=null;resumeErr=err||'';lastSig=null;
+   if(err)render();else setTimeout(function(){load()},900)});
+  return}
  if(t.dataset.copy!==undefined){
   var txt=decodeURIComponent(t.dataset.copy);
   if(navigator.clipboard)navigator.clipboard.writeText(txt);

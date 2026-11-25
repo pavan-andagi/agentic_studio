@@ -414,6 +414,8 @@ class Handler(BaseHTTPRequestHandler):
             return self._analyse()
         if u.path == "/api/propose":
             return self._propose()
+        if u.path == "/api/start":
+            return self._start_run()
         if u.path == "/api/transcribe":
             return self._transcribe()
         if u.path == "/api/speak":
@@ -522,6 +524,68 @@ class Handler(BaseHTTPRequestHandler):
         except OSError as e:
             return self._send(500, {"error": str(e)})
         return self._send(200, {"ok": True, "pid": proc.pid})
+
+    def _start_run(self):
+        """Start a project that already exists on disk.
+
+        `studio.propose` writes the project and stops, which left the
+        only way forward being a command typed on the pod - the one
+        thing this dashboard exists to avoid. This is that command.
+        It carries on from the first unapproved stage, so a project
+        the showrunner marked up to CAST begins at CAST."""
+        try:
+            n = int(self.headers.get("Content-Length", 0))
+            body = json.loads(self.rfile.read(min(n, 100_000)) or b"{}")
+        except ValueError:
+            return self._send(400, {"error": "bad JSON"})
+        name = str(body.get("name", "")).strip()
+        if not SAFE_NAME.match(name):
+            return self._send(400, {"error": "bad name"})
+        d = (self.root / name).resolve()
+        if not d.is_relative_to(self.root.resolve()):
+            return self._send(400, {"error": "bad name"})
+        if not (d / "state.json").exists():
+            return self._send(404, {"error": f"{name} is not a project "
+                                             f"that can be resumed"})
+        # A run already on the GPU, and a second one started on top of
+        # it, is how both end up out of memory. Resuming the project
+        # that is already running is also just a duplicate of itself.
+        live = RUNS.get(name)
+        if live is not None and live.poll() is None:
+            return self._send(409, {"error": f"{name} is already running"})
+        busy = [k for k, p in RUNS.items() if p.poll() is None]
+        if busy:
+            return self._send(409, {"error": f"{busy[0]} is still running; "
+                                    f"one run at a time on this pod"})
+
+        cmd = [sys.executable, "-m", "studio.main", "resume", name,
+               "--no-dashboard", "--config", str(self.config)]
+        log = d / "spawn.log"
+        try:
+            with open(log, "wb") as fh:
+                fh.write(("$ " + " ".join(cmd) + "\n\n").encode())
+            proc = subprocess.Popen(cmd, cwd=str(self.cwd),
+                                    stdout=open(log, "ab"),
+                                    stderr=subprocess.STDOUT,
+                                    stdin=subprocess.DEVNULL)
+        except OSError as e:
+            return self._send(500, {"error": f"could not start it: {e}"})
+
+        # Same reason as a new run: a resume that dies on its first
+        # second otherwise leaves the page waiting for a stage that is
+        # never going to arrive.
+        time.sleep(1.5)
+        if proc.poll() is not None:
+            tail = ""
+            try:
+                tail = log.read_text(errors="replace")[-700:]
+            except OSError:
+                pass
+            return self._send(500, {
+                "error": f"it exited immediately (code {proc.returncode})",
+                "log": tail})
+        RUNS[name] = proc
+        return self._send(200, {"ok": True, "project": name, "pid": proc.pid})
 
     def _new_run(self):
         """Create a project and launch `studio.main new` for it.

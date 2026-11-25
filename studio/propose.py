@@ -161,9 +161,9 @@ def main():
     if kf:
         print(f"  {len(kf)} keyframe(s) supplied from the reference")
     print(f"  stages marked done: {', '.join(done) or 'none'}")
-    print(f"\n  Ready. Start it with:\n"
-          f"    python -m studio.main resume {args.name}\n"
-          f"  It will begin at {start.upper()}.")
+    print(f"\n  Ready, beginning at {start.upper()}. Press 'Start the "
+          f"run' in the browser,\n  or here:  python -m studio.main "
+          f"resume {args.name}")
 
 
 if __name__ == "__main__":
