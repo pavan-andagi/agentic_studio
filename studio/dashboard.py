@@ -350,6 +350,22 @@ class Handler(BaseHTTPRequestHandler):
                 tail_txt = log.read_text(encoding="utf-8",
                                          errors="replace")[-2000:]
             return self._send(200, {"done": False, "log": tail_txt})
+        if u.path == "/api/verdict":
+            name = q.get("name", [""])[0]
+            if not SAFE_NAME.match(name or ""):
+                return self._send(400, {"error": "bad name"})
+            d = (self.root / name).resolve()
+            md, log = d / "master_admit.md", d / "propose.log"
+            if md.exists():
+                return self._send(200, {
+                    "done": True,
+                    "verdict": md.read_text(encoding="utf-8",
+                                            errors="replace"),
+                    "decision": read_json(d / "master_admit.json", {}),
+                    "ready": (d / "3_script.json").exists()})
+            return self._send(200, {"done": False,
+                                    "log": tail(log, 40) if log.exists()
+                                    else ""})
         if u.path == "/api/styles":
             # The form shows the installed defaults as its starting
             # point, so "720p, 5s" is a visible choice rather than a
@@ -396,6 +412,8 @@ class Handler(BaseHTTPRequestHandler):
             return self._new_run()
         if u.path == "/api/analyse":
             return self._analyse()
+        if u.path == "/api/propose":
+            return self._propose()
         if u.path == "/api/transcribe":
             return self._transcribe()
         if u.path == "/api/speak":
@@ -473,6 +491,37 @@ class Handler(BaseHTTPRequestHandler):
             return self._send(500, {"error": str(e)})
         return self._send(200, {"ok": True, "project": name,
                                 "pid": proc.pid})
+
+    def _propose(self):
+        """Hand an analysis to the showrunner, because the human said so.
+
+        Separate from the analysis on purpose: reading a reference is
+        free and reversible, building a project from it is neither."""
+        try:
+            n = int(self.headers.get("Content-Length", 0))
+            body = json.loads(self.rfile.read(min(n, 100_000)) or b"{}")
+        except ValueError:
+            return self._send(400, {"error": "bad JSON"})
+        name = str(body.get("name", "")).strip()
+        if not SAFE_NAME.match(name):
+            return self._send(400, {"error": "bad name"})
+        d = (self.root / name).resolve()
+        if not (d / "analysis.json").exists():
+            return self._send(404, {"error": f"{name} has no analysis to "
+                                             f"act on"})
+        cmd = [sys.executable, "-m", "studio.propose", name,
+               "--config", str(self.config)]
+        if body.get("use_frames"):
+            cmd.append("--use-frames")
+        try:
+            with open(d / "propose.log", "wb") as fh:
+                fh.write(("$ " + " ".join(cmd) + "\n\n").encode())
+                fh.flush()
+                proc = subprocess.Popen(cmd, cwd=str(self.cwd), stdout=fh,
+                                        stderr=subprocess.STDOUT)
+        except OSError as e:
+            return self._send(500, {"error": str(e)})
+        return self._send(200, {"ok": True, "pid": proc.pid})
 
     def _new_run(self):
         """Create a project and launch `studio.main new` for it.

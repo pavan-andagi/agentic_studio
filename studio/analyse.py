@@ -135,6 +135,24 @@ def cuts(path):
     return sorted(set(out))
 
 
+def still(path, dest, at=0.5):
+    """One frame from the middle of a clip, full size.
+
+    The contact sheets are for the model; this is for the person. It is
+    the frame their generated keyframe has to stand next to, and it can
+    be handed straight back as a keyframe if they would rather copy the
+    reference than reinterpret it."""
+    dest.parent.mkdir(parents=True, exist_ok=True)
+    try:
+        subprocess.run(
+            ["ffmpeg", "-y", "-v", "error", "-ss", f"{at:.2f}",
+             "-i", str(path), "-frames:v", "1", str(dest)],
+            check=True, capture_output=True, timeout=120)
+        return dest if dest.exists() else None
+    except Exception:                                        # noqa: BLE001
+        return None
+
+
 def sheet(path, dest, every=None, count=12, cols=4):
     """One picture holding `count` frames, which is what the model sees.
 
@@ -202,6 +220,12 @@ Other rules:
 - Anything the studio cannot do goes in `missing`, not into a prompt
   that quietly will not work. One honest gap beats five plausible shots.
 
+`walkthrough` is the part a person follows. Write it as the steps they
+actually take in this studio, in order, naming the gates by name: which
+mode to start in, what to paste where, what each gate will show them,
+what to look for before approving, and where it is likely to go wrong
+and what to do about it. Not a summary of the plan - the doing of it.
+
 Return JSON:
 {"summary": str,
  "theme": str,
@@ -220,6 +244,8 @@ Return JSON:
             "camera": str, "note": str}],
  "audio": {"narration": str, "music": str, "ambience": str},
  "overlays": str,
+ "walkthrough": [{"step": str, "what_you_do": str, "what_to_expect": str,
+                  "what_goes_wrong": str}],
  "missing": [{"what": str, "why_it_matters": str, "how_to_add": str}],
  "confidence": str}"""
 
@@ -334,6 +360,18 @@ def md_video(src, f, cut_list, plan, inv):
               "```", plan["look_block"].strip(), "```", ""]
 
     s = plan.get("settings") or {}
+    walk = plan.get("walkthrough") or []
+    if walk:
+        L += ["## How to make it", "",
+              "The steps in order, with what each gate will show you.", ""]
+        for n, w in enumerate(walk, 1):
+            L += [f"**{n}. {w.get('step','')}**", "",
+                  w.get("what_you_do", ""), ""]
+            if w.get("what_to_expect"):
+                L += [f"_Expect: {w['what_to_expect']}_", ""]
+            if w.get("what_goes_wrong"):
+                L += [f"_If it goes wrong: {w['what_goes_wrong']}_", ""]
+
     L += ["## Settings for this run", "",
           f"- Picture size: {s.get('image_size','-')}",
           f"- Video size: {s.get('video_size','-')}",
@@ -349,6 +387,8 @@ def md_video(src, f, cut_list, plan, inv):
               f"Characters: {who}  |  Place: {sh.get('location','-')}"
               + (f"  |  Camera: {sh['camera']}" if sh.get("camera") else ""),
               ""]
+        if sh.get("reference_frame"):
+            L += [f"Frame to match: `{sh['reference_frame']}`", ""]
         if sh.get("start_image_prompt"):
             L += ["**Keyframe prompt** - paste this whole block", "",
                   "```", join(sh["start_image_prompt"], look), "```", ""]
@@ -460,6 +500,9 @@ def main():
             sys.exit(f"{src.name} is not a video")
         print("  reading the file ...")
         f = facts(src)
+        refs_dir = (Path(args.out).parent if args.out else src.parent) \
+            / "reference"
+        frames = []
         print("  looking for cuts ...")
         cut_list = cuts(src)
         print(f"  {len(cut_list)} cut(s); building contact sheets ...")
@@ -482,9 +525,14 @@ def main():
                                timeout=300)
             except Exception:                                # noqa: BLE001
                 continue
-            s = sheet(seg, work / f"shot{i:02d}.png", count=6, cols=3)
-            if s:
-                sheets.append(s)
+            sh = sheet(seg, work / f"shot{i:02d}.png", count=6, cols=3)
+            if sh:
+                sheets.append(sh)
+            # The frame a person compares their keyframe against, kept
+            # beside the report rather than in the scratch directory.
+            ref = still(seg, refs_dir / f"s{i + 1:02d}.png")
+            if ref:
+                frames.append(ref)
         print(f"  asking the model about {len(sheets)} sheet(s) ...")
         plan = ask(llm, VIDEO_SYS,
                    f"Inventory:\n{json.dumps(inv, indent=1)}\n\n"
@@ -499,7 +547,16 @@ def main():
                       "\n\nRecreate this video's own subject and "
                       "staging."),
                    sheets)
+        # The model sees the shots in order, so shot n of its plan is
+        # frame n of the reference set. Recording the pairing means a
+        # later step can use them without guessing.
+        for i, shot in enumerate(plan.get("shots") or []):
+            if i < len(frames):
+                shot["reference_frame"] = str(frames[i])
+        plan["reference_frames"] = [str(x) for x in frames]
         text = md_video(src, f, cut_list, plan, inv)
+        if frames:
+            print(f"  {len(frames)} reference frame(s) in {refs_dir}")
     else:
         if src.suffix.lower() not in IMG_EXT:
             sys.exit(f"{src.name} is not a picture")

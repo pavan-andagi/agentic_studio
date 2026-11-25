@@ -127,6 +127,11 @@ svg{width:100%;height:auto;display:block}
  font-size:12px;line-height:1.5}
 .cb .copy{position:absolute;top:6px;right:6px;font-size:11px;
  padding:2px 8px}
+.gate{margin-top:16px;padding:12px;border:1px solid #4a4760;
+ border-radius:10px;background:#1a1a22}
+.chk{display:block;margin-top:8px;font-size:12px;color:var(--dim);
+ line-height:1.5}
+.chk input{margin-right:6px}
 .anlog{max-height:220px;overflow:auto;background:#141413;
  border:1px solid #333;border-radius:8px;padding:8px;font-size:11px;
  white-space:pre-wrap}
@@ -1193,11 +1198,46 @@ function sizeBlock(stillOnly){
    run, and this is not one. */
 function analyseForm(kind,m){
  var head=modeRow(m),word=(kind==='video')?'video':'picture';
+ if(NEW.verdict)
+  return '<div class="newp" data-newbg="1"><div class="newb">'
+   +'<h3>The showrunner on '+esc(NEW.name)+'</h3>'
+   +'<pre class="anlog">'+esc(NEW.verdict)+'</pre>'
+   +(NEW.ready
+     ? '<div class="m" style="margin-top:10px">The project is written '
+       +'and waiting. Start it from the project list, or on the pod:'
+       +'</div><div class="cb"><pre>python -m studio.main resume '
+       +esc(NEW.name)+'</pre></div>'
+     : '<div class="m" style="margin-top:10px">Nothing was created. '
+       +'The report is still in '+esc(NEW.name)+'/analysis.md.</div>')
+   +'<div style="margin-top:14px"><button data-newclose="1">Close</button>'
+   +'</div></div></div>';
+ if(NEW.sending)
+  return '<div class="newp" data-newbg="1"><div class="newb">'
+   +'<h3>The showrunner is reading it</h3>'
+   +'<div class="m">It checks the evidence is enough, decides which '
+   +'stage the work actually starts at, and says what is likely to go '
+   +'wrong.</div>'
+   +'<pre class="anlog">'+esc(NEW.log||'')+'</pre>'
+   +'<div style="margin-top:12px"><button data-newclose="1">Close</button>'
+   +'</div></div></div>';
  if(NEW.report!==undefined&&NEW.report!==null)
   return '<div class="newp" data-newbg="1"><div class="newb">'
    +'<h3>'+esc(NEW.name)+'</h3>'+mdHtml(NEW.report)
-   +'<div style="margin-top:14px"><button data-newclose="1">Close</button>'
-   +'</div></div></div>';
+   +(kind==='video'
+     ? '<div class="gate">'
+       +'<div class="m">Nothing has been built. To go further, the '
+       +'showrunner reviews this and decides where a run would start.'
+       +'</div>'
+       +'<label class="chk"><input type="checkbox" id="uf"'
+       +(NEW.useFrames?' checked':'')+'> Use the reference frames as '
+       +'keyframes - copies the original\'s framing instead of '
+       +'reinterpreting it</label>'
+       +'<div style="margin-top:10px">'
+       +'<button class="ok" data-propose="1">Send to the showrunner'
+       +'</button> <button data-newclose="1">Not now</button></div></div>'
+     : '<div style="margin-top:14px">'
+       +'<button data-newclose="1">Close</button></div>')
+   +'</div></div>';
  if(NEW.busy)
   return '<div class="newp" data-newbg="1"><div class="newb">'
    +'<h3>Reading '+esc(kind==='video'?'the clip':'the picture')+'</h3>'
@@ -1646,7 +1686,8 @@ function redraw(){lastSig=null;render()}
 function newOpen(){NEW={mode:'topic',name:'',brief:'',style:'',script:'',describe:'',until:'audio',refs:[],motion:'',point:null,
   files:[],styles:(NEW&&NEW.styles)||[],err:'',busy:false,
   size:'',image_size:'',seconds:'',fps:'',adv:false,
-  report:null,log:'',note:'',dflt:(NEW&&NEW.dflt)||null};
+  report:null,log:'',note:'',verdict:'',ready:false,sending:false,
+  useFrames:false,dflt:(NEW&&NEW.dflt)||null};
  fetch(q('/api/styles')).then(function(r){return r.json()})
   .then(function(j){if(NEW){NEW.styles=j.styles||[];
     NEW.dflt=j.defaults||null;paintNew()}})
@@ -1738,6 +1779,36 @@ function paintNew(){document.getElementById('modal').innerHTML=renderNew();
  pickFiles('fs','files'); pickFiles('rf','refs');
  pointPicker(); paintPointLabel()}
 /* Reading a reference, rather than starting a run. */
+/* The permission gate. Reading a reference changes nothing; building
+   a project from it does, so it takes a deliberate press. */
+function proposeStart(){
+ var cb=document.getElementById('uf');
+ NEW.useFrames=!!(cb&&cb.checked);
+ NEW.sending=true;NEW.log='';paintNew();
+ fetch(q('/api/propose'),{method:'POST',
+  headers:{'Content-Type':'application/json'},
+  body:JSON.stringify({name:NEW.name,use_frames:NEW.useFrames})})
+ .then(function(r){return r.json()})
+ .then(function(j){
+   if(j.error){NEW.sending=false;NEW.err=j.error;return paintNew()}
+   verdictPoll(NEW.name,0)})
+ .catch(function(){NEW.sending=false;
+   NEW.err='could not reach the studio';paintNew()})}
+function verdictPoll(name,n){
+ if(!NEW)return;
+ fetch(q('/api/verdict?name='+encodeURIComponent(name)))
+ .then(function(r){return r.json()})
+ .then(function(j){
+   if(!NEW)return;
+   if(j.done){NEW.sending=false;NEW.verdict=j.verdict;
+     NEW.ready=!!j.ready;return paintNew()}
+   NEW.log=j.log||'';paintNew();
+   if(n>120){NEW.sending=false;
+     NEW.err='the showrunner is taking a long time - see '
+      +name+'/propose.log';return paintNew()}
+   setTimeout(function(){verdictPoll(name,n+1)},5000)})
+ .catch(function(){setTimeout(function(){verdictPoll(name,n+1)},5000)})}
+
 function analyseStart(){
  newRead();
  var kind=(NEW.mode==='promptvid')?'video':'image';
@@ -1813,7 +1884,7 @@ function newStart(){newRead();NEW.err='';
    setTimeout(function(){load()},900)})
   .catch(function(){NEW.busy=false;
    NEW.err='the dashboard could not be reached';paintNew()})}
-function onClick(e){var t=e.target.closest('[data-copy],[data-adv],[data-newopen],[data-newclose],[data-mode],[data-start],[data-bub],[data-mic],[data-speak],[data-autosend],[data-ans],[data-send],[data-tab],[data-follow],[data-allfb],[data-stage],[data-view],[data-msg]');if(!t)return;
+function onClick(e){var t=e.target.closest('[data-propose],[data-copy],[data-adv],[data-newopen],[data-newclose],[data-mode],[data-start],[data-bub],[data-mic],[data-speak],[data-autosend],[data-ans],[data-send],[data-tab],[data-follow],[data-allfb],[data-stage],[data-view],[data-msg]');if(!t)return;
  if(t.dataset.newopen!==undefined){newOpen();return}
  if(t.dataset.newclose!==undefined){NEW=null;paintNew();return}
  if(t.dataset.adv!==undefined){e.preventDefault();newRead();NEW.adv=true;
@@ -1824,6 +1895,7 @@ function onClick(e){var t=e.target.closest('[data-copy],[data-adv],[data-newopen
   if(NEW&&NEW.mode&&NEW.mode.indexOf('prompt')===0)analyseStart();
   else newStart();
   return}
+ if(t.dataset.propose!==undefined){proposeStart();return}
  if(t.dataset.copy!==undefined){
   var txt=decodeURIComponent(t.dataset.copy);
   if(navigator.clipboard)navigator.clipboard.writeText(txt);
