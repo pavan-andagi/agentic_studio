@@ -81,8 +81,25 @@ def _repoint(a, text):
     return nums[:2] if len(nums) >= 2 else None
 
 
-def _video(files):
+def _video(files, prefer=None, drop=None):
+    """The video the workflow actually made.
+
+    A workflow that LOADS a video reports that file as an output too, so
+    what comes back can contain the source clip as well as the result -
+    and picking the first one hands back the input untouched. The name
+    we asked SaveVideo for is the thing to look for; `drop` is the input
+    filename, which should not be sitting in takes/ pretending to be a
+    take."""
     vids = [f for f in files if f.suffix.lower() in (".mp4", ".webm", ".mov")]
+    if drop:
+        echoes = [f for f in vids if f.name == Path(drop).name]
+        for f in echoes:
+            f.unlink(missing_ok=True)
+        vids = [f for f in vids if f not in echoes]
+    if prefer:
+        want = [f for f in vids if f.name.startswith(prefer)]
+        if want:
+            return want[0]
     if not vids:
         raise RuntimeError("Workflow produced no video file")
     return vids[0]
@@ -158,7 +175,9 @@ def run(ctx, feedback=None, items=None):
             p.set_status("clips", "working",
                          f"generating clip {sid} ({what})")
             vid = _video(ctx.comfy.run(wf, values, p.dir / "clips" / "takes",
-                                       label=sid))
+                                       label=sid),
+                         prefer=f"{p.dir.name}_{sid}",
+                         drop=an["video"] if an else None)
             info, issues = validate(vid)
             sheet = contact_sheet(vid, p.dir / "sheets" / f"{sid}.png")
             open_file(vid)
@@ -219,7 +238,8 @@ def run(ctx, feedback=None, items=None):
                     "@VIDEO": ctx.comfy.upload(clip),
                     "@FILENAME": f"studio/{p.dir.name}_{s['id']}_4k"},
                     p.dir / "clips" / "4k", label=f"{s['id']} 4K")
-                shutil.copy(_video(files), out)
+                shutil.copy(_video(files, prefer=f"{p.dir.name}_{s['id']}_4k",
+                                   drop=clip), out)
             clip = out
         finished.append(clip)
 
