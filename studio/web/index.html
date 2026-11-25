@@ -116,6 +116,20 @@ svg{width:100%;height:auto;display:block}
 .node.skip .t{fill:#7e7b92}
 .node.skip .s{fill:#625f73;font-style:italic}
 .node.skip{opacity:.72}
+.rep{max-height:64vh;overflow:auto;padding-right:6px}
+.rep h2{font-size:15px;margin:18px 0 6px}
+.rep h3{font-size:13px;margin:14px 0 4px;color:var(--dim)}
+.rep p{margin:6px 0;line-height:1.5}
+.rep ul{margin:6px 0 6px 18px}
+.cb{position:relative;margin:8px 0}
+.cb pre{white-space:pre-wrap;word-break:break-word;background:#141413;
+ border:1px solid #333;border-radius:8px;padding:10px 12px;margin:0;
+ font-size:12px;line-height:1.5}
+.cb .copy{position:absolute;top:6px;right:6px;font-size:11px;
+ padding:2px 8px}
+.anlog{max-height:220px;overflow:auto;background:#141413;
+ border:1px solid #333;border-radius:8px;padding:8px;font-size:11px;
+ white-space:pre-wrap}
 .row2{display:flex;gap:12px}
 .row2>div{flex:1}
 .ppc{display:block;border-radius:8px;border:1px solid #3a3936;
@@ -1103,12 +1117,16 @@ var MODES=[
   'the studio draws it, then animates it','img'],
  ['swap','Character swap: Image',
   'one subject in your picture, replaced','img'],
+ ['promptimg','Prompt from a picture',
+  'read a picture and write the prompts to make one like it','img'],
  ['topic','Topic','a brief; the studio writes everything','vid'],
  ['script','Script','your shot list, keyframes generated','vid'],
  ['frames','Script + pictures','your shot list and your keyframes','vid'],
  ['image','One picture','animate a single image','vid'],
  ['swapvid','Character swap: Video',
-  'your clip, one character replaced, motion kept','vid']];
+  'your clip, one character replaced, motion kept','vid'],
+ ['promptvid','Prompt from a video',
+  'read a clip and write the shot list and prompts to rebuild it','vid']];
 /* Size, length and frame rate, per run.
    They were fixed in config.yaml, which made "draft it small, then make
    the keeper properly" a file edit and a restart. The presets are the
@@ -1169,6 +1187,90 @@ function sizeBlock(stillOnly){
   +'takes roughly ten times as long. Video sizes must be multiples '
   +'of 32.</div>';
 }
+/* Reading a reference and writing prompts for it.
+   Deliberately short: a file, and optionally what you would rather
+   make. Everything else - size, style, where to stop - belongs to a
+   run, and this is not one. */
+function analyseForm(kind,m){
+ var head=modeRow(m),word=(kind==='video')?'video':'picture';
+ if(NEW.report!==undefined&&NEW.report!==null)
+  return '<div class="newp" data-newbg="1"><div class="newb">'
+   +'<h3>'+esc(NEW.name)+'</h3>'+mdHtml(NEW.report)
+   +'<div style="margin-top:14px"><button data-newclose="1">Close</button>'
+   +'</div></div></div>';
+ if(NEW.busy)
+  return '<div class="newp" data-newbg="1"><div class="newb">'
+   +'<h3>Reading '+esc(kind==='video'?'the clip':'the picture')+'</h3>'
+   +'<div class="m">'+esc(NEW.note||'working ...')+'</div>'
+   +'<pre class="anlog">'+esc(NEW.log||'')+'</pre>'
+   +'<div style="margin-top:12px"><button data-newclose="1">Close</button>'
+   +'<span class="m" style="margin-left:10px">It keeps going if you '
+   +'close this.</span></div></div></div>';
+ return '<div class="newp" data-newbg="1"><div class="newb">'
+  +'<h3>Prompt from a '+esc(word)+'</h3>'
+  +'<div class="m">It reads the '+esc(word)+' and writes the prompts to '
+  +'make one like it with this studio - and says what the studio has '
+  +'not got.</div>'
+  +head
+  +'<label>Name for this</label><input type="text" id="nm" value="'
+  +esc(NEW.name)+'" placeholder="letters, digits, - and _">'
+  +'<label>The '+esc(word)+'</label>'
+  +'<input type="file" id="fs" accept="'+(kind==='video'?'video/*'
+    :'image/*')+'">'
+  +'<div class="m">'+(NEW.files.length?esc(NEW.files[0].name):'none yet')
+  +'</div>'
+  +'<label>What you would rather make (optional)</label>'
+  +'<textarea id="bf" placeholder="leave blank to recreate this one; or '
+  +'say what to make instead, keeping the same craft">'+esc(NEW.brief)
+  +'</textarea>'
+  +(NEW.err?'<div class="err">'+esc(NEW.err)+'</div>':'')
+  +'<div style="margin-top:14px"><button class="ok" data-start="1">'
+  +(NEW.busy?'Reading ...':'Read it')+'</button> '
+  +'<button data-newclose="1">Cancel</button></div></div></div>'}
+
+function modeRow(m){
+ return '<div class="row2">'
+  +'<div><label>What are you making</label><select id="cat">'
+   +CATS.map(function(c){return '<option value="'+c[0]+'"'
+    +(catOf(m)===c[0]?' selected':'')+'>'+esc(c[1])+'</option>'}).join('')
+   +'</select></div>'
+  +'<div><label>How you are starting</label><select id="md">'
+   +MODES.filter(function(x){return x[3]===catOf(m)})
+    .map(function(x){return '<option value="'+x[0]+'"'
+     +(x[0]===m?' selected':'')+'>'+esc(x[1])+'</option>'}).join('')
+   +'</select></div></div>'}
+
+/* Just enough Markdown for these reports: headings, bold, lists and
+   fenced blocks. The fenced blocks are the point - they are the
+   prompts, so each gets a Copy button. */
+function mdHtml(md){
+ var out=[],lines=String(md||'').split('\n'),i=0,fence=null;
+ var flushP=function(){};
+ while(i<lines.length){
+  var ln=lines[i];
+  if(/^```/.test(ln)){
+   if(fence===null){fence=[]}
+   else{out.push('<div class="cb"><button class="copy" data-copy="'
+     +encodeURIComponent(fence.join('\n'))+'">Copy</button><pre>'
+     +esc(fence.join('\n'))+'</pre></div>');fence=null}
+   i++;continue}
+  if(fence!==null){fence.push(ln);i++;continue}
+  var h=/^(#{1,4})\s+(.*)$/.exec(ln);
+  if(h){out.push('<h'+(h[1].length+1)+'>'+inl(h[2])+'</h'
+    +(h[1].length+1)+'>');i++;continue}
+  if(/^-\s+/.test(ln)){
+   var items=[];
+   while(i<lines.length&&/^-\s+/.test(lines[i])){
+    items.push('<li>'+inl(lines[i].replace(/^-\s+/,''))+'</li>');i++}
+   out.push('<ul>'+items.join('')+'</ul>');continue}
+  if(ln.trim()){out.push('<p>'+inl(ln)+'</p>')}
+  i++}
+ return '<div class="rep">'+out.join('')+'</div>'}
+function inl(t){
+ return esc(t).replace(/\*\*(.+?)\*\*/g,'<b>$1</b>')
+              .replace(/_(.+?)_/g,'<i>$1</i>')
+              .replace(/`(.+?)`/g,'<code>$1</code>')}
+
 function renderNew(){if(!NEW)return '';
  // Picking a mode changes what the obvious stop point is: somebody who
  // described a picture most likely wants the picture.
@@ -1178,6 +1280,10 @@ function renderNew(){if(!NEW)return '';
   NEW._lastMode=NEW.mode}
  var m=NEW.mode,needsScript=(m==='script'||m==='frames'),
      isVid=(m==='swapvid'),isSwap=(m==='swap'||isVid),
+     // Reading something and writing prompts for it is not a run: no
+     // stages, no style, no stop point. Only an upload and a question.
+     anKind=(m==='promptimg'?'image':(m==='promptvid'?'video':'')),
+     isAn=!!anKind,
      needsPics=(m==='frames'||m==='image'||isSwap),
      needsLook=(m==='describe'),
      // Nothing is animated, so there is nothing to say about movement.
@@ -1209,6 +1315,7 @@ function renderNew(){if(!NEW)return '';
    +esc(NEW.refs.map(function(f){return f.name}).join(', '))
    :'none yet - a clear picture of them, plain background is best')
   +'</div>':'');
+ if(isAn)return analyseForm(anKind,m);
  return'<div class="newp" data-newbg="1"><div class="newb">'
  +'<h3>New run</h3><div class="m">The run starts as its own process, so this page keeps working while it goes.</div>'
  +'<div class="row2">'
@@ -1539,7 +1646,7 @@ function redraw(){lastSig=null;render()}
 function newOpen(){NEW={mode:'topic',name:'',brief:'',style:'',script:'',describe:'',until:'audio',refs:[],motion:'',point:null,
   files:[],styles:(NEW&&NEW.styles)||[],err:'',busy:false,
   size:'',image_size:'',seconds:'',fps:'',adv:false,
-  dflt:(NEW&&NEW.dflt)||null};
+  report:null,log:'',note:'',dflt:(NEW&&NEW.dflt)||null};
  fetch(q('/api/styles')).then(function(r){return r.json()})
   .then(function(j){if(NEW){NEW.styles=j.styles||[];
     NEW.dflt=j.defaults||null;paintNew()}})
@@ -1630,6 +1737,42 @@ function paintNew(){document.getElementById('modal').innerHTML=renderNew();
  if(sy)sy.onchange=function(){newRead();paintNew()};
  pickFiles('fs','files'); pickFiles('rf','refs');
  pointPicker(); paintPointLabel()}
+/* Reading a reference, rather than starting a run. */
+function analyseStart(){
+ newRead();
+ var kind=(NEW.mode==='promptvid')?'video':'image';
+ if(!/^[A-Za-z0-9][A-Za-z0-9_-]{0,63}$/.test(NEW.name)){
+  NEW.err='The name may use letters, digits, - and _ only.';
+  return paintNew()}
+ if(!NEW.files.length){
+  NEW.err='Choose a '+(kind==='video'?'video':'picture')+'.';
+  return paintNew()}
+ NEW.busy=true;NEW.err='';NEW.note='uploading ...';paintNew();
+ fetch(q('/api/analyse'),{method:'POST',
+  headers:{'Content-Type':'application/json'},
+  body:JSON.stringify({name:NEW.name,kind:kind,about:NEW.brief,
+   files:NEW.files})})
+ .then(function(r){return r.json()})
+ .then(function(j){
+   if(j.error){NEW.busy=false;NEW.err=j.error;return paintNew()}
+   NEW.note='reading it - a minute or two';paintNew();
+   analysePoll(j.project,0)})
+ .catch(function(){NEW.busy=false;
+   NEW.err='could not reach the studio';paintNew()})}
+function analysePoll(name,n){
+ if(!NEW||NEW.mode.indexOf('prompt')!==0)return;
+ fetch(q('/api/analysis?name='+encodeURIComponent(name)))
+ .then(function(r){return r.json()})
+ .then(function(j){
+   if(!NEW)return;
+   if(j.done){NEW.busy=false;NEW.report=j.report;return paintNew()}
+   NEW.log=j.log||'';paintNew();
+   if(n>240){NEW.busy=false;
+     NEW.err='it is taking longer than twenty minutes - see '
+      +name+'/analyse.log';return paintNew()}
+   setTimeout(function(){analysePoll(name,n+1)},5000)})
+ .catch(function(){setTimeout(function(){analysePoll(name,n+1)},5000)})}
+
 function newStart(){newRead();NEW.err='';
  if(!/^[A-Za-z0-9][A-Za-z0-9_-]{0,63}$/.test(NEW.name)){
   NEW.err='The name may use letters, digits, - and _ only.';return paintNew()}
@@ -1670,14 +1813,23 @@ function newStart(){newRead();NEW.err='';
    setTimeout(function(){load()},900)})
   .catch(function(){NEW.busy=false;
    NEW.err='the dashboard could not be reached';paintNew()})}
-function onClick(e){var t=e.target.closest('[data-adv],[data-newopen],[data-newclose],[data-mode],[data-start],[data-bub],[data-mic],[data-speak],[data-autosend],[data-ans],[data-send],[data-tab],[data-follow],[data-allfb],[data-stage],[data-view],[data-msg]');if(!t)return;
+function onClick(e){var t=e.target.closest('[data-copy],[data-adv],[data-newopen],[data-newclose],[data-mode],[data-start],[data-bub],[data-mic],[data-speak],[data-autosend],[data-ans],[data-send],[data-tab],[data-follow],[data-allfb],[data-stage],[data-view],[data-msg]');if(!t)return;
  if(t.dataset.newopen!==undefined){newOpen();return}
  if(t.dataset.newclose!==undefined){NEW=null;paintNew();return}
  if(t.dataset.adv!==undefined){e.preventDefault();newRead();NEW.adv=true;
   paintNew();return}
  if(t.dataset.mode!==undefined){newRead();NEW.mode=t.dataset.mode;
   NEW.err='';paintNew();return}
- if(t.dataset.start!==undefined){newStart();return}
+ if(t.dataset.start!==undefined){
+  if(NEW&&NEW.mode&&NEW.mode.indexOf('prompt')===0)analyseStart();
+  else newStart();
+  return}
+ if(t.dataset.copy!==undefined){
+  var txt=decodeURIComponent(t.dataset.copy);
+  if(navigator.clipboard)navigator.clipboard.writeText(txt);
+  t.textContent='Copied';
+  setTimeout(function(){t.textContent='Copy'},1200);
+  return}
  if(t.dataset.bub!==undefined){var b=String(t.dataset.bub).split(':');
   if(b.length===1){                       // a subject: open or close it
    bubOpen=(bubOpen===b[0]?null:b[0]);bubPick=null;bubManual=true}

@@ -296,6 +296,24 @@ class Handler(BaseHTTPRequestHandler):
         if u.path in ("/", "/index.html"):
             return self._send(200, (WEB / "index.html").read_bytes(),
                               "text/html; charset=utf-8")
+        if u.path == "/api/analysis":
+            # The report as it stands. Absent means still working;
+            # the child writes it in one go when it finishes.
+            name = q.get("name", [""])[0]
+            if not SAFE_NAME.match(name or ""):
+                return self._send(400, {"error": "bad name"})
+            d = (self.root / name).resolve()
+            md, log = d / "analysis.md", d / "analyse.log"
+            if md.exists():
+                return self._send(200, {"done": True,
+                                        "report": md.read_text(
+                                            encoding="utf-8",
+                                            errors="replace")})
+            tail_txt = ""
+            if log.exists():
+                tail_txt = log.read_text(encoding="utf-8",
+                                         errors="replace")[-2000:]
+            return self._send(200, {"done": False, "log": tail_txt})
         if u.path == "/api/styles":
             # The form shows the installed defaults as its starting
             # point, so "720p, 5s" is a visible choice rather than a
@@ -340,6 +358,8 @@ class Handler(BaseHTTPRequestHandler):
             return self._send(401, {"error": "bad key"})
         if u.path == "/api/new":
             return self._new_run()
+        if u.path == "/api/analyse":
+            return self._analyse()
         if u.path == "/api/transcribe":
             return self._transcribe()
         if u.path == "/api/speak":
@@ -363,6 +383,61 @@ class Handler(BaseHTTPRequestHandler):
 
 
     # ---------- starting a run ----------
+    def _analyse(self):
+        """Read a supplied picture or clip and write a plan for it.
+
+        Spawned like a run rather than done inline: ffmpeg and a model
+        call take a minute or two, and the dashboard has one thread to
+        answer everybody with."""
+        try:
+            n = int(self.headers.get("Content-Length", 0))
+            body = json.loads(self.rfile.read(min(n, 400_000_000)) or b"{}")
+        except ValueError:
+            return self._send(400, {"error": "bad JSON"})
+
+        name = str(body.get("name", "")).strip()
+        kind = str(body.get("kind", "")).strip()
+        about = str(body.get("about", "")).strip()
+        if not SAFE_NAME.match(name):
+            return self._send(400, {"error": "the name may use letters, "
+                                             "digits, - and _ only"})
+        if kind not in ("image", "video"):
+            return self._send(400, {"error": "kind must be image or video"})
+        d = (self.root / name).resolve()
+        if not d.is_relative_to(self.root.resolve()):
+            return self._send(400, {"error": "bad name"})
+        if d.exists():
+            return self._send(409, {"error": f"{name} already exists"})
+        try:
+            d.mkdir(parents=True, exist_ok=True)
+        except OSError as e:
+            return self._send(500, {"error": f"could not create {name}: {e}"})
+
+        saved = _save_uploads(d / "supplied", body.get("files") or [],
+                              IMG if kind == "image" else VID)
+        if not saved:
+            shutil.rmtree(d, ignore_errors=True)
+            return self._send(400, {
+                "error": "upload a video" if kind == "video"
+                         else "upload a picture"})
+
+        cmd = [sys.executable, "-m", "studio.analyse", kind, str(saved[0]),
+               "--config", str(self.config), "--out", str(d / "analysis.md")]
+        if about:
+            cmd += ["--about", about]
+        log = d / "analyse.log"
+        try:
+            with open(log, "wb") as fh:
+                fh.write(("$ " + " ".join(cmd) + "\n\n").encode())
+                fh.flush()
+                proc = subprocess.Popen(cmd, cwd=str(self.cwd), stdout=fh,
+                                        stderr=subprocess.STDOUT)
+        except OSError as e:
+            shutil.rmtree(d, ignore_errors=True)
+            return self._send(500, {"error": str(e)})
+        return self._send(200, {"ok": True, "project": name,
+                                "pid": proc.pid})
+
     def _new_run(self):
         """Create a project and launch `studio.main new` for it.
 
