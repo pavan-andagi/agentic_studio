@@ -116,6 +116,8 @@ svg{width:100%;height:auto;display:block}
 .node.skip .t{fill:#7e7b92}
 .node.skip .s{fill:#625f73;font-style:italic}
 .node.skip{opacity:.72}
+.row2{display:flex;gap:12px}
+.row2>div{flex:1}
 .ppc{display:block;border-radius:8px;border:1px solid #3a3936;
  cursor:crosshair;max-width:100%}
 .ppwrap .m{margin-top:6px}
@@ -357,18 +359,26 @@ function clock(t){var d=new Date(t*1000);return d.toTimeString().slice(0,8)}
 /* Where a run may be told to end. Everything up to Clips makes the
    video; the three stages after it are passes over a video that
    already exists, and not every video wants them. */
-var STOPS=[
- ['images','Image creation - pictures only',
-  'No video at all. The keyframes are generated and you pick them; '
-  +'nothing is animated.'],
- ['clips', 'Clips - the finished video',
-  'Animated and assembled. No look pass, no titles, no sound.'],
- ['finish','Finish - with the look applied',
-  'The style filters are imposed on the clips, then joined again.'],
- ['render','Overlays - with titles and captions',
-  'Text drawn in code over the graded clips.'],
- ['audio', 'Audio - everything (default)',
-  'Narration, music and ambience mixed under the video.']];
+/* What you end up with, not which stage it stopped at.
+   Finish and Overlays only appear when a style is chosen: without one
+   there is no look to impose and nothing to draw, so offering them
+   would be offering two stages that change nothing. */
+function stopOptions(hasStyle){
+ var out=[['images','Pictures only - no video',
+   'The keyframes are generated and you pick them. Nothing is animated.'],
+  ['clips','Video generation',
+   'Animated and assembled. No look pass, no titles, no sound.']];
+ if(hasStyle){
+  out.push(['finish','Video with the style look',
+   'The style filters are imposed on the clips, then joined again.']);
+  out.push(['render','Video with the look and titles',
+   'Text drawn in code over the graded clips.']);
+ }
+ out.push(['audio','Video with audio tuning',
+  hasStyle?'Everything: look, titles, narration, music and ambience.'
+          :'Narration, music and ambience under the video. With no '
+           +'style chosen, the look and titles passes are skipped.']);
+ return out}
 var ST=[
  {id:'trend',n:'1 Trend identifier',s:'Claude + web search',desc:'Finds what is trending now and ranks ideas for your channel.'},
  {id:'plan',n:'2 Project planner',s:'Style, characters, beats',desc:'Writes the production plan and locks the look and characters.'},
@@ -1086,14 +1096,58 @@ function renderFeedback(d,id){var l=(d.state.feedback_log||[]).filter(function(e
 function hms(s){s=Math.round(s);var h=Math.floor(s/3600),m=Math.floor(s%3600/60);
  return h?h+'h '+('0'+m).slice(-2)+'m':(m?m+'m '+('0'+(s%60)).slice(-2)+'s':s+'s')}
 var NEW=null;   // null = closed, otherwise the form's current state
-var MODES=[['topic','Topic','a brief; the studio writes everything'],
- ['script','Script','a finished shot list (JSON); keyframes generated'],
- ['frames','Script + pictures','a shot list and your own keyframes'],
- ['image','One picture','animate a single image'],
- ['describe','Describe a picture','the studio draws it, then animates it'],
- ['swap','Character swap: Image','one subject in your picture, replaced'],
+/* Grouped by what you get out, not by what you put in: somebody who
+   wants a picture should not have to read five video modes first. */
+var MODES=[
+ ['describe','Describe a picture',
+  'the studio draws it, then animates it','img'],
+ ['swap','Character swap: Image',
+  'one subject in your picture, replaced','img'],
+ ['topic','Topic','a brief; the studio writes everything','vid'],
+ ['script','Script','your shot list, keyframes generated','vid'],
+ ['frames','Script + pictures','your shot list and your keyframes','vid'],
+ ['image','One picture','animate a single image','vid'],
  ['swapvid','Character swap: Video',
-  'your clip, one character replaced, motion kept']];
+  'your clip, one character replaced, motion kept','vid']];
+/* Size, length and frame rate, per run.
+   They were fixed in config.yaml, which made "draft it small, then make
+   the keeper properly" a file edit and a restart. The presets are the
+   ones that matter - a draft back in minutes, and the real thing - with
+   the exact numbers there for anyone who wants them. */
+var SIZES=[['','As configured'],
+           ['480x864','Draft - 480x864, fastest'],
+           ['576x1024','Medium - 576x1024'],
+           ['704x1280','Full - 704x1280, slowest'],
+           ['864x480','Landscape draft - 864x480'],
+           ['1280x704','Landscape full - 1280x704']];
+var CATS=[['img','Pictures'],['vid','Video']];
+function catOf(mode){
+ var r=MODES.filter(function(x){return x[0]===mode})[0];
+ return r?r[3]:'vid'}
+
+function sizeBlock(){
+ var d=NEW.dflt||{},vs=d.video_size||[],
+     now=NEW.size||(vs.length?vs[0]+'x'+vs[1]:'as configured'),
+     secs=NEW.seconds||d.max_clip_seconds||'',
+     fps=NEW.fps||d.fps||'';
+ if(!NEW.adv)
+  return '<label>Video settings</label><div class="m">'+esc(now)
+   +', '+esc(String(fps))+'fps, up to '+esc(String(secs))+'s a shot'
+   +' \u00b7 <a href="#" data-adv="1">change</a></div>';
+ return '<label>Size</label><select id="sz">'
+  +SIZES.map(function(x){return '<option value="'+x[0]+'"'
+    +(NEW.size===x[0]?' selected':'')+'>'+esc(x[1])+'</option>'}).join('')
+  +'</select>'
+  +'<div class="row2">'
+   +'<div><label>Seconds a shot</label><input type="number" id="se" '
+   +'min="1" max="30" value="'+esc(String(secs))+'"></div>'
+   +'<div><label>Frames per second</label><input type="number" id="fp" '
+   +'min="8" max="60" value="'+esc(String(fps))+'"></div></div>'
+  +'<div class="hint">Cost scales with frames x pixels. A swap at '
+  +'480x864 / 16fps / 5s takes a few minutes; 704x1280 / 24fps / 8s '
+  +'takes roughly ten times as long. Both numbers in the size must be '
+  +'multiples of 32.</div>';
+}
 function renderNew(){if(!NEW)return '';
  // Picking a mode changes what the obvious stop point is: somebody who
  // described a picture most likely wants the picture.
@@ -1106,7 +1160,12 @@ function renderNew(){if(!NEW)return '';
      needsPics=(m==='frames'||m==='image'||isSwap),
      needsLook=(m==='describe'),
      // Nothing is animated, so there is nothing to say about movement.
-     stillOnly=(NEW.until==='images');
+     stillOnly=(NEW.until==='images'),
+     stops=stopOptions(!!NEW.style),
+     stopIds=stops.map(function(x){return x[0]});
+ // Clearing the style after picking "with the look" would leave the
+ // dropdown on an option that no longer exists.
+ if(stopIds.indexOf(NEW.until)<0)NEW.until='audio';
  /* A swap is read picture-first: this is the image, this is who goes in
     it, and only then the sentence saying who comes out. Everywhere else
     the uploads are an afterthought and stay at the bottom. */
@@ -1131,10 +1190,17 @@ function renderNew(){if(!NEW)return '';
   +'</div>':'');
  return'<div class="newp" data-newbg="1"><div class="newb">'
  +'<h3>New run</h3><div class="m">The run starts as its own process, so this page keeps working while it goes.</div>'
- +'<label>What are you starting from</label><div class="modes">'
- +MODES.map(function(x){return'<button data-mode="'+x[0]+'" class="'
-  +(m===x[0]?'on':'')+'" title="'+esc(x[2])+'">'+esc(x[1])+'</button>'}).join('')
- +'</div><div class="m" style="margin-top:6px">'
+ +'<div class="row2">'
+  +'<div><label>What are you making</label>'
+   +'<select id="cat">'+CATS.map(function(c){
+     return '<option value="'+c[0]+'"'+(catOf(m)===c[0]?' selected':'')
+      +'>'+esc(c[1])+'</option>'}).join('')+'</select></div>'
+  +'<div><label>How you are starting</label>'
+   +'<select id="md">'+MODES.filter(function(x){return x[3]===catOf(m)})
+     .map(function(x){return '<option value="'+x[0]+'"'
+      +(x[0]===m?' selected':'')+'>'+esc(x[1])+'</option>'}).join('')
+   +'</select></div></div>'
+ +'<div class="m" style="margin-top:6px">'
  +esc((m==='describe'&&stillOnly)?'the studio draws it; nothing is animated'
    :((MODES.filter(function(x){return x[0]===m})[0]||[])[2]||''))+'</div>'
  +'<label>Project name</label><input type="text" id="nm" value="'
@@ -1152,11 +1218,13 @@ function renderNew(){if(!NEW)return '';
   :'A 15-second narrated short ...'))+'">'+esc(NEW.brief)+'</textarea>')
  +(isVid?'<div class="hint">The clip\'s own motion, timing and framing '
   +'are kept. Only the character changes.</div>':'')
- +'<label>Stop after</label><select id="un">'+STOPS.map(function(x){
+ +'<label>What you want out</label><select id="un">'
+ +stops.map(function(x){
    return '<option value="'+x[0]+'"'+(NEW.until===x[0]?' selected':'')+'>'
     +esc(x[1])+'</option>'}).join('')+'</select>'
- +'<div class="hint">'+esc((STOPS.filter(function(x){
+ +'<div class="hint">'+esc((stops.filter(function(x){
     return x[0]===NEW.until})[0]||['','',''])[2])+'</div>'
+ +sizeBlock()
  +'<label>Style</label><select id="sy"><option value="">(config default)</option>'+(NEW.styles||[]).map(function(x){return'<option'
   +(NEW.style===x?' selected':'')+'>'+esc(x)+'</option>'}).join('')+'</select>'
  +(needsScript?'<label>Shot list (JSON)</label><textarea id="sc" placeholder=\'{"shots": [{"id": "s01", "motion_prompt": "..."}]}\'>'
@@ -1448,16 +1516,22 @@ function send(text){var p=data&&data.pending;if(!p)return;
   .catch(function(){offline(true)})}
 function redraw(){lastSig=null;render()}
 function newOpen(){NEW={mode:'topic',name:'',brief:'',style:'',script:'',describe:'',until:'audio',refs:[],motion:'',point:null,
-  files:[],styles:(NEW&&NEW.styles)||[],err:'',busy:false};
+  files:[],styles:(NEW&&NEW.styles)||[],err:'',busy:false,
+  size:'',seconds:'',fps:'',adv:false,dflt:(NEW&&NEW.dflt)||null};
  fetch(q('/api/styles')).then(function(r){return r.json()})
-  .then(function(j){if(NEW){NEW.styles=j.styles||[];paintNew()}})
+  .then(function(j){if(NEW){NEW.styles=j.styles||[];
+    NEW.dflt=j.defaults||null;paintNew()}})
   .catch(function(){});paintNew()}
 function newRead(){if(!NEW)return;
  var g=function(id){var e=document.getElementById(id);return e?e.value:''};
  NEW.name=g('nm');NEW.brief=g('bf');NEW.style=g('sy');
+ if(document.getElementById('md'))NEW.mode=g('md')||NEW.mode;
  if(document.getElementById('sc'))NEW.script=g('sc');
  if(document.getElementById('dc'))NEW.describe=g('dc');
  if(document.getElementById('un'))NEW.until=g('un');
+ if(document.getElementById('sz'))NEW.size=g('sz');
+ if(document.getElementById('se'))NEW.seconds=g('se');
+ if(document.getElementById('fp'))NEW.fps=g('fp');
 }
 /* Which character to replace, chosen by clicking it.
    The mask is not forgiving: the centre of the frame is as likely to
@@ -1517,6 +1591,20 @@ function pickFiles(id,into){
    rd.onerror=done;
    rd.readAsDataURL(file)})}}
 function paintNew(){document.getElementById('modal').innerHTML=renderNew();
+ var cat=document.getElementById('cat');
+ if(cat)cat.onchange=function(){
+  // Switching category lands on that category's first mode, so the
+  // second dropdown is never showing something the first rules out.
+  newRead();
+  NEW.mode=MODES.filter(function(x){return x[3]===cat.value})[0][0];
+  NEW.err='';paintNew()};
+ var md=document.getElementById('md');
+ if(md)md.onchange=function(){newRead();NEW.mode=md.value;NEW.err='';
+  paintNew()};
+ // Choosing a style adds two outcomes to the list below it, so the
+ // form has to redraw rather than wait for the next repaint.
+ var sy=document.getElementById('sy');
+ if(sy)sy.onchange=function(){newRead();paintNew()};
  pickFiles('fs','files'); pickFiles('rf','refs');
  pointPicker(); paintPointLabel()}
 function newStart(){newRead();NEW.err='';
@@ -1548,7 +1636,7 @@ function newStart(){newRead();NEW.err='';
   body:JSON.stringify({name:NEW.name,mode:NEW.mode,brief:NEW.brief,
    style:NEW.style,script:NEW.script,describe:NEW.describe,
    until:NEW.until,files:NEW.files,refs:NEW.refs,
-   point:NEW.point})})
+   point:NEW.point,size:NEW.size,seconds:NEW.seconds,fps:NEW.fps})})
   .then(function(r){return r.json().then(function(j){return[r.ok,j]})})
   .then(function(x){if(!x[0]){NEW.busy=false;
     NEW.err=((x[1]&&x[1].error)||'could not start the run')
@@ -1558,9 +1646,11 @@ function newStart(){newRead();NEW.err='';
    setTimeout(function(){load()},900)})
   .catch(function(){NEW.busy=false;
    NEW.err='the dashboard could not be reached';paintNew()})}
-function onClick(e){var t=e.target.closest('[data-newopen],[data-newclose],[data-mode],[data-start],[data-bub],[data-mic],[data-speak],[data-autosend],[data-ans],[data-send],[data-tab],[data-follow],[data-allfb],[data-stage],[data-view],[data-msg]');if(!t)return;
+function onClick(e){var t=e.target.closest('[data-adv],[data-newopen],[data-newclose],[data-mode],[data-start],[data-bub],[data-mic],[data-speak],[data-autosend],[data-ans],[data-send],[data-tab],[data-follow],[data-allfb],[data-stage],[data-view],[data-msg]');if(!t)return;
  if(t.dataset.newopen!==undefined){newOpen();return}
  if(t.dataset.newclose!==undefined){NEW=null;paintNew();return}
+ if(t.dataset.adv!==undefined){e.preventDefault();newRead();NEW.adv=true;
+  paintNew();return}
  if(t.dataset.mode!==undefined){newRead();NEW.mode=t.dataset.mode;
   NEW.err='';paintNew();return}
  if(t.dataset.start!==undefined){newStart();return}

@@ -179,7 +179,7 @@ def project_data(root, name):
     data = {
         "name": name, "state": {k: st.get(k) for k in (
             "approved", "inputs", "current", "feedback_log", "guidance",
-            "entry", "stop_after")},
+            "entry", "stop_after", "settings")},
         "run": {"alive": is_alive, "pid": run_pid,
                 "started": (st.get("run") or {}).get("started")},
         "files": {k: read_json(d / f) for k, f in FILES.items()},
@@ -297,7 +297,21 @@ class Handler(BaseHTTPRequestHandler):
             return self._send(200, (WEB / "index.html").read_bytes(),
                               "text/html; charset=utf-8")
         if u.path == "/api/styles":
-            return self._send(200, {"styles": read_styles(self.config)})
+            # The form shows the installed defaults as its starting
+            # point, so "720p, 5s" is a visible choice rather than a
+            # number buried in config.yaml.
+            d = {}
+            try:
+                import yaml
+                d = (yaml.safe_load(Path(self.config).read_text())
+                     .get("defaults") or {})
+            except Exception:                                # noqa: BLE001
+                pass
+            return self._send(200, {
+                "styles": read_styles(self.config),
+                "defaults": {"video_size": d.get("video_size", [704, 1280]),
+                             "fps": d.get("fps", 24),
+                             "max_clip_seconds": d.get("max_clip_seconds", 5)}})
         if u.path == "/api/voice":
             return self._send(200, voice_caps())
         if u.path == "/api/projects":
@@ -382,6 +396,9 @@ class Handler(BaseHTTPRequestHandler):
         describe = str(body.get("describe", "")).strip()
         until = str(body.get("until", "")).strip()
         motion = str(body.get("motion", "")).strip()
+        size = str(body.get("size", "")).strip()
+        seconds = body.get("seconds")
+        fps = body.get("fps")
         point = body.get("point")
         if point is not None:
             try:
@@ -421,6 +438,16 @@ class Handler(BaseHTTPRequestHandler):
                 cmd += ["--brief", brief]
             if style:
                 cmd += ["--style", style]
+            if size:
+                cmd += ["--size", size]
+            if seconds:
+                cmd += ["--seconds", str(int(seconds))]
+            if fps:
+                cmd += ["--fps", str(int(fps))]
+            # Nothing to grade and nothing to draw: Finish and Overlays
+            # would run, change nothing, and still ask for approval.
+            if not style and until in ("audio", "render", ""):
+                cmd += ["--skip", "finish,render"]
             if until and until != STAGES[-1]:
                 cmd += ["--until", until]
             if mode == "describe":

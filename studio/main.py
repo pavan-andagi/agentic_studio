@@ -184,6 +184,19 @@ def main():
     ap.add_argument("--refs", metavar="DIR", help="reference picture(s) of "
                     "the character that replaces one in --image. With "
                     "--brief saying who is replaced, this is a swap")
+    ap.add_argument("--skip", metavar="A,B", help="stages to pass over "
+                    "entirely, e.g. finish,render. They are marked done "
+                    "without running, which is what you want when "
+                    "nothing in the project needs them")
+    ap.add_argument("--size", metavar="WxH", help="video size for this "
+                    "run, e.g. 480x864 or 704x1280. Overrides "
+                    "defaults.video_size in config.yaml")
+    ap.add_argument("--seconds", type=int, metavar="N",
+                    help="longest a single shot may be, for this run. "
+                    "Overrides defaults.max_clip_seconds")
+    ap.add_argument("--fps", type=int, metavar="N",
+                    help="frames per second for this run. Overrides "
+                    "defaults.fps")
     ap.add_argument("--until", metavar="STAGE", choices=STAGES,
                     help="stop after this stage instead of running the "
                     f"whole pipeline. One of: {', '.join(STAGES)}")
@@ -202,6 +215,53 @@ def main():
     if problems:
         sys.exit("config.yaml styles:\n  " + "\n  ".join(problems))
     p = Project(cfg["projects_dir"], args.name)
+
+    # Stages with nothing to do. Without a style there is no look to
+    # impose and usually no titles to draw, so Finish and Overlays would
+    # each run, change nothing, and stop for approval anyway. Marking
+    # them skips two gates rather than two no-ops.
+    if args.skip:
+        asked = [x.strip() for x in str(args.skip).split(",") if x.strip()]
+        bad = [x for x in asked if x not in STAGES]
+        if bad:
+            sys.exit(f"--skip: no stage called {', '.join(bad)}")
+        for stage in asked:
+            p.mark(stage)
+        skipped = p.state.setdefault("entry", {}).setdefault("skipped", [])
+        for stage in asked:
+            if stage not in skipped:
+                skipped.append(stage)
+        p.save()
+        print(f"  skipping: {', '.join(asked)}")
+
+    # Size, length and frame rate belong to a run, not to the machine.
+    # A draft at 480x864 and a keeper at 704x1280 are the same project
+    # with different settings, so they are stored with the project and
+    # laid over config.yaml every time it is loaded - which means a
+    # resume continues at the size it started at, rather than silently
+    # changing shape halfway through.
+    over = dict(p.state.get("settings") or {})
+    if args.size:
+        try:
+            w, h = (int(x) for x in str(args.size).lower().split("x"))
+        except ValueError:
+            sys.exit(f"--size {args.size!r} should look like 704x1280")
+        if w % 32 or h % 32:
+            sys.exit(f"--size {w}x{h}: both numbers must be multiples of "
+                     f"32 (LTX needs it, and Wan needs multiples of 16)")
+        over["video_size"] = [w, h]
+    if args.seconds:
+        over["max_clip_seconds"] = int(args.seconds)
+    if args.fps:
+        over["fps"] = int(args.fps)
+    if over:
+        p.state["settings"] = over
+        cfg["defaults"].update(over)
+        d = cfg["defaults"]
+        print(f"  settings for this run: {d['video_size'][0]}x"
+              f"{d['video_size'][1]}, {d['fps']}fps, up to "
+              f"{d['max_clip_seconds']}s a shot")
+        p.save()
     if args.command == "new":
         if not (args.brief or args.script or args.image or args.describe
                 or args.video):
