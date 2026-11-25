@@ -1114,6 +1114,12 @@ var MODES=[
    the keeper properly" a file edit and a restart. The presets are the
    ones that matter - a draft back in minutes, and the real thing - with
    the exact numbers there for anyone who wants them. */
+var PSIZES=[['','As configured'],
+ ['1920x1088','Wide - 1920x1088 (16:9)'],
+ ['2048x880', 'Ultra wide - 2048x880 (21:9)'],
+ ['1472x1472','Square - 1472x1472'],
+ ['1056x1920','Tall - 1056x1920 (9:16)'],
+ ['1344x1792','Portrait - 1344x1792 (3:4)']];
 var SIZES=[['','As configured'],
            ['480x864','Draft - 480x864, fastest'],
            ['576x1024','Medium - 576x1024'],
@@ -1125,16 +1131,31 @@ function catOf(mode){
  var r=MODES.filter(function(x){return x[0]===mode})[0];
  return r?r[3]:'vid'}
 
-function sizeBlock(){
- var d=NEW.dflt||{},vs=d.video_size||[],
-     now=NEW.size||(vs.length?vs[0]+'x'+vs[1]:'as configured'),
+function sizeBlock(stillOnly){
+ // Pictures and video are sized separately - the keyframe is normally
+ // made larger than the clip - so a run that makes only pictures gets
+ // the picture sizes and nothing about frame rate.
+ var d=NEW.dflt||{},vs=d.video_size||[],is=d.image_size||[],
+     pnow=NEW.image_size||(is.length?is[0]+'x'+is[1]:'as configured'),
+     vnow=NEW.size||(vs.length?vs[0]+'x'+vs[1]:'as configured'),
      secs=NEW.seconds||d.max_clip_seconds||'',
      fps=NEW.fps||d.fps||'';
  if(!NEW.adv)
-  return '<label>Video settings</label><div class="m">'+esc(now)
-   +', '+esc(String(fps))+'fps, up to '+esc(String(secs))+'s a shot'
+  return '<label>Settings</label><div class="m">'
+   +(stillOnly?esc(pnow)
+     :esc(pnow)+' pictures, '+esc(vnow)+' video, '+esc(String(fps))
+      +'fps, up to '+esc(String(secs))+'s a shot')
    +' \u00b7 <a href="#" data-adv="1">change</a></div>';
- return '<label>Size</label><select id="sz">'
+ var out='<label>Picture size</label><select id="is">'
+  +PSIZES.map(function(x){return '<option value="'+x[0]+'"'
+    +(NEW.image_size===x[0]?' selected':'')+'>'+esc(x[1])
+    +'</option>'}).join('')+'</select>';
+ if(stillOnly)
+  return out+'<div class="hint">Z-Image is trained around one '
+   +'megapixel. Much larger and it loses coherence; much smaller and '
+   +'it loses detail. Both numbers must be multiples of 16.</div>';
+ return out
+  +'<label>Video size</label><select id="sz">'
   +SIZES.map(function(x){return '<option value="'+x[0]+'"'
     +(NEW.size===x[0]?' selected':'')+'>'+esc(x[1])+'</option>'}).join('')
   +'</select>'
@@ -1145,8 +1166,8 @@ function sizeBlock(){
    +'min="8" max="60" value="'+esc(String(fps))+'"></div></div>'
   +'<div class="hint">Cost scales with frames x pixels. A swap at '
   +'480x864 / 16fps / 5s takes a few minutes; 704x1280 / 24fps / 8s '
-  +'takes roughly ten times as long. Both numbers in the size must be '
-  +'multiples of 32.</div>';
+  +'takes roughly ten times as long. Video sizes must be multiples '
+  +'of 32.</div>';
 }
 function renderNew(){if(!NEW)return '';
  // Picking a mode changes what the obvious stop point is: somebody who
@@ -1224,7 +1245,7 @@ function renderNew(){if(!NEW)return '';
     +esc(x[1])+'</option>'}).join('')+'</select>'
  +'<div class="hint">'+esc((stops.filter(function(x){
     return x[0]===NEW.until})[0]||['','',''])[2])+'</div>'
- +sizeBlock()
+ +sizeBlock(stillOnly)
  +'<label>Style</label><select id="sy"><option value="">(config default)</option>'+(NEW.styles||[]).map(function(x){return'<option'
   +(NEW.style===x?' selected':'')+'>'+esc(x)+'</option>'}).join('')+'</select>'
  +(needsScript?'<label>Shot list (JSON)</label><textarea id="sc" placeholder=\'{"shots": [{"id": "s01", "motion_prompt": "..."}]}\'>'
@@ -1517,7 +1538,8 @@ function send(text){var p=data&&data.pending;if(!p)return;
 function redraw(){lastSig=null;render()}
 function newOpen(){NEW={mode:'topic',name:'',brief:'',style:'',script:'',describe:'',until:'audio',refs:[],motion:'',point:null,
   files:[],styles:(NEW&&NEW.styles)||[],err:'',busy:false,
-  size:'',seconds:'',fps:'',adv:false,dflt:(NEW&&NEW.dflt)||null};
+  size:'',image_size:'',seconds:'',fps:'',adv:false,
+  dflt:(NEW&&NEW.dflt)||null};
  fetch(q('/api/styles')).then(function(r){return r.json()})
   .then(function(j){if(NEW){NEW.styles=j.styles||[];
     NEW.dflt=j.defaults||null;paintNew()}})
@@ -1530,6 +1552,7 @@ function newRead(){if(!NEW)return;
  if(document.getElementById('dc'))NEW.describe=g('dc');
  if(document.getElementById('un'))NEW.until=g('un');
  if(document.getElementById('sz'))NEW.size=g('sz');
+ if(document.getElementById('is'))NEW.image_size=g('is');
  if(document.getElementById('se'))NEW.seconds=g('se');
  if(document.getElementById('fp'))NEW.fps=g('fp');
 }
@@ -1636,7 +1659,8 @@ function newStart(){newRead();NEW.err='';
   body:JSON.stringify({name:NEW.name,mode:NEW.mode,brief:NEW.brief,
    style:NEW.style,script:NEW.script,describe:NEW.describe,
    until:NEW.until,files:NEW.files,refs:NEW.refs,
-   point:NEW.point,size:NEW.size,seconds:NEW.seconds,fps:NEW.fps})})
+   point:NEW.point,size:NEW.size,image_size:NEW.image_size,
+   seconds:NEW.seconds,fps:NEW.fps})})
   .then(function(r){return r.json().then(function(j){return[r.ok,j]})})
   .then(function(x){if(!x[0]){NEW.busy=false;
     NEW.err=((x[1]&&x[1].error)||'could not start the run')

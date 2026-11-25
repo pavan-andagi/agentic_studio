@@ -191,6 +191,11 @@ def main():
     ap.add_argument("--size", metavar="WxH", help="video size for this "
                     "run, e.g. 480x864 or 704x1280. Overrides "
                     "defaults.video_size in config.yaml")
+    ap.add_argument("--image-size", dest="image_size", metavar="WxH",
+                    help="size for generated pictures, e.g. 1920x1088. "
+                    "Overrides defaults.image_size. Pictures and video "
+                    "are sized separately because the keyframe is "
+                    "usually made larger than the clip")
     ap.add_argument("--seconds", type=int, metavar="N",
                     help="longest a single shot may be, for this run. "
                     "Overrides defaults.max_clip_seconds")
@@ -240,16 +245,23 @@ def main():
     # laid over config.yaml every time it is loaded - which means a
     # resume continues at the size it started at, rather than silently
     # changing shape halfway through.
+    def _wh(flag, text, step):
+        try:
+            w, h = (int(x) for x in str(text).lower().split("x"))
+        except ValueError:
+            sys.exit(f"{flag} {text!r} should look like 704x1280")
+        if w % step or h % step:
+            sys.exit(f"{flag} {w}x{h}: both numbers must be multiples "
+                     f"of {step}")
+        return [w, h]
+
     over = dict(p.state.get("settings") or {})
     if args.size:
-        try:
-            w, h = (int(x) for x in str(args.size).lower().split("x"))
-        except ValueError:
-            sys.exit(f"--size {args.size!r} should look like 704x1280")
-        if w % 32 or h % 32:
-            sys.exit(f"--size {w}x{h}: both numbers must be multiples of "
-                     f"32 (LTX needs it, and Wan needs multiples of 16)")
-        over["video_size"] = [w, h]
+        # 32 because LTX halves the frame internally; Wan needs 16, so
+        # anything that satisfies LTX satisfies Wan too.
+        over["video_size"] = _wh("--size", args.size, 32)
+    if args.image_size:
+        over["image_size"] = _wh("--image-size", args.image_size, 16)
     if args.seconds:
         over["max_clip_seconds"] = int(args.seconds)
     if args.fps:
@@ -258,9 +270,10 @@ def main():
         p.state["settings"] = over
         cfg["defaults"].update(over)
         d = cfg["defaults"]
-        print(f"  settings for this run: {d['video_size'][0]}x"
-              f"{d['video_size'][1]}, {d['fps']}fps, up to "
-              f"{d['max_clip_seconds']}s a shot")
+        print(f"  settings for this run: pictures "
+              f"{d['image_size'][0]}x{d['image_size'][1]}, video "
+              f"{d['video_size'][0]}x{d['video_size'][1]}, {d['fps']}fps, "
+              f"up to {d['max_clip_seconds']}s a shot")
         p.save()
     if args.command == "new":
         if not (args.brief or args.script or args.image or args.describe

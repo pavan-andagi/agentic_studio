@@ -310,6 +310,8 @@ class Handler(BaseHTTPRequestHandler):
             return self._send(200, {
                 "styles": read_styles(self.config),
                 "defaults": {"video_size": d.get("video_size", [704, 1280]),
+                             "image_size": d.get("image_size",
+                                                  [1056, 1920]),
                              "fps": d.get("fps", 24),
                              "max_clip_seconds": d.get("max_clip_seconds", 5)}})
         if u.path == "/api/voice":
@@ -397,6 +399,7 @@ class Handler(BaseHTTPRequestHandler):
         until = str(body.get("until", "")).strip()
         motion = str(body.get("motion", "")).strip()
         size = str(body.get("size", "")).strip()
+        image_size = str(body.get("image_size", "")).strip()
         seconds = body.get("seconds")
         fps = body.get("fps")
         point = body.get("point")
@@ -440,6 +443,8 @@ class Handler(BaseHTTPRequestHandler):
                 cmd += ["--style", style]
             if size:
                 cmd += ["--size", size]
+            if image_size:
+                cmd += ["--image-size", image_size]
             if seconds:
                 cmd += ["--seconds", str(int(seconds))]
             if fps:
