@@ -177,6 +177,10 @@ def main():
                     "With --refs and --brief")
     ap.add_argument("--motion", metavar="TEXT", help="what happens in the "
                     "swapped clip; only with --video")
+    ap.add_argument("--point", metavar="X,Y", help="where the character to "
+                    "replace is, as fractions of the frame (0.72,0.42) or "
+                    "pixels. Default: the middle, which often lands on "
+                    "clothing or the floor")
     ap.add_argument("--refs", metavar="DIR", help="reference picture(s) of "
                     "the character that replaces one in --image. With "
                     "--brief saying who is replaced, this is a swap")
@@ -212,7 +216,8 @@ def main():
         try:
             how = entry.prepare(p, cfg, args.script, args.image,
                                 args.images, args.brief, args.describe,
-                                args.refs, args.video, args.motion)
+                                args.refs, args.video, args.motion,
+                                args.point)
         except entry.EntryError as e:
             sys.exit(f"cannot start from what you supplied: {e}")
         if how:

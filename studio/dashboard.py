@@ -382,6 +382,12 @@ class Handler(BaseHTTPRequestHandler):
         describe = str(body.get("describe", "")).strip()
         until = str(body.get("until", "")).strip()
         motion = str(body.get("motion", "")).strip()
+        point = body.get("point")
+        if point is not None:
+            try:
+                point = [float(point[0]), float(point[1])]
+            except (TypeError, ValueError, IndexError):
+                return self._send(400, {"error": "point must be two numbers"})
         if until and until not in STAGES:
             return self._send(400, {"error": f"no stage called {until}"})
         if mode == "topic" and not brief:
@@ -439,6 +445,8 @@ class Handler(BaseHTTPRequestHandler):
                 cmd += ["--video", str(clip[0]), "--refs", str(d / "refs")]
                 if motion:
                     cmd += ["--motion", motion]
+                if point:
+                    cmd += ["--point", f"{point[0]},{point[1]}"]
             if mode in ("frames", "image", "swap"):
                 saved = _save_uploads(stage, body.get("files") or [])
                 if not saved:

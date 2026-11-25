@@ -160,6 +160,23 @@ def _bind_images(shots, supplied, project, aspect):
     return out
 
 
+def _point_arg(text):
+    """"0.72,0.42" -> [0.72, 0.42]. Anything unparseable means the
+    default, because a swap aimed at nothing is better than a crash."""
+    if text in (None, ""):
+        return None
+    if isinstance(text, (list, tuple)):
+        nums = list(text)[:2]
+    else:
+        nums = str(text).replace(",", " ").split()[:2]
+    try:
+        return [float(nums[0]), float(nums[1])]
+    except (ValueError, IndexError):
+        print(f"  NOTE: --point {text!r} is not two numbers, using the "
+              f"middle of the frame")
+        return None
+
+
 def _refs_in(refs, limit=2):
     """The reference pictures, capped at what Qwen Edit can take.
 
@@ -196,7 +213,7 @@ def _check_aspect(path, aspect, key):
 
 # ------------------------------------------------------------------- entry
 def prepare(project, cfg, script=None, image=None, images=None, brief=None,
-            describe=None, refs=None, video=None, motion=None):
+            describe=None, refs=None, video=None, motion=None, point=None):
     """Fill in whatever was supplied and mark those stages approved.
 
     Returns a line describing what was done, or None for the normal
@@ -238,7 +255,7 @@ def prepare(project, cfg, script=None, image=None, images=None, brief=None,
             "animate": {"video": str(src.resolve()),
                         "reference": str(pics[0].resolve()),
                         "instruction": said,
-                        "point": None}}]}, default_seconds)
+                        "point": _point_arg(point)}}]}, default_seconds)
         supplied = {}
         notes.append(f"character swap in {src.name}, keeping its motion")
         if secs and secs > dur:
