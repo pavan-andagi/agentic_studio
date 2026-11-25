@@ -32,7 +32,15 @@ STAGES = ["trend", "plan", "script", "cast", "images", "clips",
           "finish", "render", "audio"]
 IMG = {".png", ".jpg", ".jpeg", ".webp"}
 VID = {".mp4", ".mov", ".webm", ".mkv", ".m4v"}
-VID = {".mp4", ".webm", ".mov"}
+# What a browser calls the thing it just read. A file picked on a phone
+# often arrives as .heic or .jfif, and a name with no extension at all
+# is common from a paste - so the type is taken from the data URL and
+# the name is only a fallback.
+MIME = {"image/png": ".png", "image/jpeg": ".jpg", "image/jpg": ".jpg",
+        "image/webp": ".webp", "image/heic": ".heic", "image/heif": ".heic",
+        "image/jfif": ".jpg", "image/bmp": ".bmp", "image/tiff": ".tif",
+        "video/mp4": ".mp4", "video/quicktime": ".mov",
+        "video/webm": ".webm", "video/x-matroska": ".mkv"}
 # A project name becomes a directory name and a command-line argument,
 # so it is the one piece of user input here that must be boring.
 SAFE_NAME = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_-]{0,63}$")
@@ -60,17 +68,45 @@ def _save_uploads(stage, files, allow=None):
     """[{name, data}] with base64 data -> saved paths, in order.
 
     Names are taken apart rather than trusted: an uploaded file called
-    ../../etc/passwd is a file called passwd."""
+    ../../etc/passwd is a file called passwd.
+
+    The extension comes from the data URL's own type where the name
+    does not supply a usable one. Renaming a JPEG to .png, which is
+    what this used to do, produces a file every later step misreads."""
     allow = allow or IMG
     stage.mkdir(parents=True, exist_ok=True)
     out = []
     for i, f in enumerate(files, 1):
-        raw = base64.b64decode(str(f.get("data", "")).split(",")[-1])
+        head, _, b64 = str(f.get("data", "")).rpartition(",")
+        raw = base64.b64decode(b64 or "")
         if not raw:
             continue
-        stem = Path(str(f.get("name") or f"img{i}")).name
-        if Path(stem).suffix.lower() not in allow:
-            stem += ".png" if allow is IMG else ".mp4"
+        mime = ""
+        if head.startswith("data:"):
+            mime = head[5:].split(";")[0].strip().lower()
+        stem = Path(str(f.get("name") or f"file{i}")).name
+        ext = Path(stem).suffix.lower()
+        if ext not in allow:
+            # The browser knows what it read; the filename may not.
+            guess = MIME.get(mime, "")
+            if guess in allow:
+                stem = Path(stem).stem + guess
+            elif allow is IMG and (guess or mime.startswith("image/")):
+                # A real picture in a format the pipeline does not take
+                # (.heic from a phone, .bmp, .tif). Convert rather than
+                # refuse: the person supplied a picture, after all.
+                try:
+                    from io import BytesIO
+                    from PIL import Image
+                    img = Image.open(BytesIO(raw)).convert("RGB")
+                    buf = BytesIO()
+                    img.save(buf, "PNG")
+                    raw = buf.getvalue()
+                    stem = Path(stem).stem + ".png"
+                except Exception:                            # noqa: BLE001
+                    continue
+            else:
+                continue
         dest = stage / stem
         dest.write_bytes(raw)
         out.append(dest)
