@@ -1171,12 +1171,16 @@ function sizeBlock(stillOnly){
      pnow=NEW.image_size||(is.length?is[0]+'x'+is[1]:'as configured'),
      vnow=NEW.size||(vs.length?vs[0]+'x'+vs[1]:'as configured'),
      secs=NEW.seconds||d.max_clip_seconds||'',
-     fps=NEW.fps||d.fps||'';
+     fps=NEW.fps||d.fps||'',
+     // A swap follows the clip it is given: Wan consumes it frame by
+     // frame, so a rate chosen here would only play it slow.
+     swap=NEW.mode==='swapvid';
  if(!NEW.adv)
   return '<label>Settings</label><div class="m">'
    +(stillOnly?esc(pnow)
-     :esc(pnow)+' pictures, '+esc(vnow)+' video, '+esc(String(fps))
-      +'fps, up to '+esc(String(secs))+'s a shot')
+     :esc(pnow)+' pictures, '+esc(vnow)+' video, '
+      +(swap?'frame rate from your clip':esc(String(fps))+'fps')
+      +', up to '+esc(String(secs))+'s a shot')
    +' \u00b7 <a href="#" data-adv="1">change</a></div>';
  var out='<label>Picture size</label><select id="is">'
   +PSIZES.map(function(x){return '<option value="'+x[0]+'"'
@@ -1194,8 +1198,14 @@ function sizeBlock(stillOnly){
   +'<div class="row2">'
    +'<div><label>Seconds a shot</label><input type="number" id="se" '
    +'min="1" max="30" value="'+esc(String(secs))+'"></div>'
-   +'<div><label>Frames per second</label><input type="number" id="fp" '
-   +'min="8" max="60" value="'+esc(String(fps))+'"></div></div>'
+   +'<div><label>Frames per second</label>'
+   +(swap
+     ?'<input type="text" value="from your clip" disabled>'
+     :'<input type="number" id="fp" min="8" max="60" value="'
+      +esc(String(fps))+'">')
+   +'</div></div>'
+  +(swap?'<div class="hint">The frame rate comes from the clip you '
+    +'supplied, so the motion keeps its real speed.</div>':'')
   +'<div class="hint">Cost scales with frames x pixels. A swap at '
   +'480x864 / 16fps / 5s takes a few minutes; 704x1280 / 24fps / 8s '
   +'takes roughly ten times as long. Video sizes must be multiples '
