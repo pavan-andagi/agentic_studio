@@ -179,8 +179,13 @@ def main():
                     "swapped clip; only with --video")
     ap.add_argument("--point", metavar="X,Y", help="where the character to "
                     "replace is, as fractions of the frame (0.72,0.42) or "
-                    "pixels. Default: the middle, which often lands on "
-                    "clothing or the floor")
+                    "pixels. Several pairs are allowed and usually needed - "
+                    "head and body - because one point lets the segmenter "
+                    "decide which part you meant. Default: the middle, "
+                    "which often lands on clothing or the floor")
+    ap.add_argument("--avoid", metavar="X,Y", help="points that are NOT the "
+                    "character, same format, for when the mask swallows a "
+                    "pillow or a second animal")
     ap.add_argument("--refs", metavar="DIR", help="reference picture(s) of "
                     "the character that replaces one in --image. With "
                     "--brief saying who is replaced, this is a swap")
@@ -290,7 +295,7 @@ def main():
             how = entry.prepare(p, cfg, args.script, args.image,
                                 args.images, args.brief, args.describe,
                                 args.refs, args.video, args.motion,
-                                args.point)
+                                args.point, args.avoid)
         except entry.EntryError as e:
             sys.exit(f"cannot start from what you supplied: {e}")
         if how:

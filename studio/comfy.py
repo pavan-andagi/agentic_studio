@@ -28,6 +28,7 @@ FIELDS = {
     "@LAST_IMAGE": ["image"],
     "@VIDEO": ["video", "file"],
     "@POINTS": ["coordinates", "points_store"],
+    "@NEGPOINTS": ["neg_coordinates"],
     "@WIDTH": ["width", "value"],
     "@HEIGHT": ["height", "value"],
     "@DURATION": ["duration", "seconds", "length", "value"],

@@ -248,6 +248,10 @@
       "coordinates_positive": [
         "229",
         0
+      ],
+      "coordinates_negative": [
+        "229",
+        1
       ]
     },
     "class_type": "Sam2Segmentation",
@@ -369,7 +373,7 @@
     },
     "class_type": "PointsEditor",
     "_meta": {
-      "title": "@POINTS",
+      "title": "@POINTS @NEGPOINTS",
       "cnr_id": "comfyui-kjnodes",
       "ver": "e81f33508b0821ea2f53f4f46a833fa6215626bd"
     }

@@ -160,21 +160,30 @@ def _bind_images(shots, supplied, project, aspect):
     return out
 
 
-def _point_arg(text):
-    """"0.72,0.42" -> [0.72, 0.42]. Anything unparseable means the
-    default, because a swap aimed at nothing is better than a crash."""
-    if text in (None, ""):
+def _point_arg(text, what="--point"):
+    """"0.72,0.42" -> [0.72, 0.42], and any number of pairs after that.
+
+    One point asks SAM 2 to guess which part of the thing you meant,
+    which is how a swap comes back as a new head on the old body. Head
+    and body is two points. Anything unparseable means the default,
+    because a swap aimed at nothing is better than a crash."""
+    if text in (None, "", []):
         return None
     if isinstance(text, (list, tuple)):
-        nums = list(text)[:2]
+        raw = list(text)
     else:
-        nums = str(text).replace(",", " ").split()[:2]
-    try:
-        return [float(nums[0]), float(nums[1])]
-    except (ValueError, IndexError):
-        print(f"  NOTE: --point {text!r} is not two numbers, using the "
-              f"middle of the frame")
+        raw = str(text).replace(",", " ").split()
+    nums = []
+    for v in raw:
+        try:
+            nums.append(float(v))
+        except (TypeError, ValueError):
+            continue
+    if len(nums) < 2:
+        print(f"  NOTE: {what} {text!r} is not a pair of numbers, "
+              f"ignoring it")
         return None
+    return nums[:len(nums) - len(nums) % 2]
 
 
 def _refs_in(refs, limit=2):
@@ -213,7 +222,8 @@ def _check_aspect(path, aspect, key):
 
 # ------------------------------------------------------------------- entry
 def prepare(project, cfg, script=None, image=None, images=None, brief=None,
-            describe=None, refs=None, video=None, motion=None, point=None):
+            describe=None, refs=None, video=None, motion=None, point=None,
+            avoid=None):
     """Fill in whatever was supplied and mark those stages approved.
 
     Returns a line describing what was done, or None for the normal
@@ -255,7 +265,9 @@ def prepare(project, cfg, script=None, image=None, images=None, brief=None,
             "animate": {"video": str(src.resolve()),
                         "reference": str(pics[0].resolve()),
                         "instruction": said,
-                        "point": _point_arg(point)}}]}, default_seconds)
+                        "point": _point_arg(point),
+                        "avoid": _point_arg(avoid, "--avoid")}}]},
+                          default_seconds)
         supplied = {}
         notes.append(f"character swap in {src.name}, keeping its motion")
         if secs and secs > dur:

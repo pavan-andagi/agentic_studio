@@ -1375,7 +1375,9 @@ function renderNew(){if(!NEW)return '';
  +(isVid?'<div class="ppwrap" style="display:none">'
   +'<label>Which character</label>'
   +'<canvas id="pp" class="ppc"></canvas>'
-  +'<div class="m" id="ppl"></div></div>':'')
+  +'<div class="m" id="ppl"></div>'
+  +'<div class="m"><a href="#" id="ppu">start the marking again</a>'
+  +'</div></div>':'')
  +(isSwap?'<label>The character that replaces it</label>'
   +'<input type="file" id="rf" accept="image/*" multiple>'
   +'<div class="m">'+(NEW.refs.length?NEW.refs.length+' selected: '
@@ -1751,29 +1753,54 @@ function pointPicker(){
   try{v.currentTime=0.04}catch(e){drawPP(v,cv)}};
  v.onseeked=function(){drawPP(v,cv)};
  v.onerror=function(){cv.parentNode.style.display='none'};
- cv.onclick=function(e){
-  var r=cv.getBoundingClientRect();
-  NEW.point=[Math.round((e.clientX-r.left)/r.width*1000)/1000,
-             Math.round((e.clientY-r.top)/r.height*1000)/1000];
-  drawPP(v,cv); paintPointLabel()}}
+ // Click the character, as many times as it takes. One point lets the
+ // segmenter decide which part of the animal you meant - which is how
+ // a swap comes back as a new head on the old body. Shift-click (or
+ // right-click) marks something that is NOT the character.
+ var add=function(e,neg){
+  e.preventDefault();
+  var r=cv.getBoundingClientRect(),
+      x=Math.round((e.clientX-r.left)/r.width*1000)/1000,
+      y=Math.round((e.clientY-r.top)/r.height*1000)/1000,
+      key=neg?'avoid':'point';
+  NEW[key]=(NEW[key]||[]).concat([x,y]);
+  drawPP(v,cv); paintPointLabel()};
+ cv.onclick=function(e){add(e,e.shiftKey||e.altKey)};
+ cv.oncontextmenu=function(e){add(e,true)};
+ var un=document.getElementById('ppu');
+ if(un)un.onclick=function(e){
+  e.preventDefault();
+  NEW.point=null;NEW.avoid=null;drawPP(v,cv);paintPointLabel()}}
 function drawPP(v,cv){
  var w=v.videoWidth,h=v.videoHeight;if(!w)return;
  cv.width=240;cv.height=Math.round(240*h/w);
  var g=cv.getContext('2d');
  g.drawImage(v,0,0,cv.width,cv.height);
  cv.parentNode.style.display='';
- var pt=NEW.point;if(!pt)return;
- var x=pt[0]*cv.width,y=pt[1]*cv.height;
- g.strokeStyle='#33dd88';g.lineWidth=2;
- g.beginPath();g.arc(x,y,9,0,7);g.stroke();
- g.beginPath();g.moveTo(x-15,y);g.lineTo(x+15,y);
- g.moveTo(x,y-15);g.lineTo(x,y+15);g.stroke()}
+ var mark=function(list,col,cross){
+  for(var i=0;i+1<(list||[]).length;i+=2){
+   var x=list[i]*cv.width,y=list[i+1]*cv.height;
+   g.strokeStyle=col;g.lineWidth=2;
+   g.beginPath();g.arc(x,y,8,0,7);g.stroke();
+   g.beginPath();
+   if(cross){g.moveTo(x-6,y-6);g.lineTo(x+6,y+6);
+             g.moveTo(x+6,y-6);g.lineTo(x-6,y+6)}
+   else{g.moveTo(x-13,y);g.lineTo(x+13,y);
+        g.moveTo(x,y-13);g.lineTo(x,y+13)}
+   g.stroke()}};
+ mark(NEW.point,'#33dd88',false);
+ mark(NEW.avoid,'#ff6b6b',true)}
 function paintPointLabel(){
  var el=document.getElementById('ppl');if(!el)return;
- el.textContent=NEW.point
-  ?'replacing whatever is at ('+NEW.point[0]+', '+NEW.point[1]+')'
-  :'click the character to replace - otherwise the centre is used, '
-   +'which often lands on clothing or the floor'}
+ var np=(NEW.point||[]).length/2,na=(NEW.avoid||[]).length/2;
+ if(!np&&!na){
+  el.textContent='click the character to replace - head AND body, '
+   +'since one point often swaps only the head. Shift-click anything '
+   +'that is not the character.';
+  return}
+ el.textContent=np+' point'+(np===1?'':'s')+' on the character'
+  +(na?', '+na+' marked as not it':'')
+  +(np===1?' - one point often swaps only the head':'')}
 
 /* Two upload slots now: the picture to change, and who replaces the
    subject in it. Same reader, different destination. */
@@ -1783,7 +1810,7 @@ function pickFiles(id,into){
  f.onchange=function(){var list=[].slice.call(f.files),out=[],left=list.length;
   if(!left)return;
   var done=function(){if(--left===0){newRead();NEW[into]=out.filter(Boolean);
-    if(into==='files')NEW.point=null;
+    if(into==='files'){NEW.point=null;NEW.avoid=null}
     paintNew()}};
   list.forEach(function(file,i){var rd=new FileReader();
    rd.onload=function(){out[i]={name:file.name,data:String(rd.result)};done()};
@@ -1924,7 +1951,8 @@ function newStart(){newRead();NEW.err='';
   body:JSON.stringify({name:NEW.name,mode:NEW.mode,brief:NEW.brief,
    style:NEW.style,script:NEW.script,describe:NEW.describe,
    until:NEW.until,files:NEW.files,refs:NEW.refs,
-   point:NEW.point,size:NEW.size,image_size:NEW.image_size,
+   point:NEW.point,avoid:NEW.avoid,
+   size:NEW.size,image_size:NEW.image_size,
    seconds:NEW.seconds,fps:NEW.fps})})
   .then(function(r){return r.json().then(function(j){return[r.ok,j]})})
   .then(function(x){if(!x[0]){NEW.busy=false;

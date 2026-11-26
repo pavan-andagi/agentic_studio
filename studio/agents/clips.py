@@ -96,8 +96,17 @@ def _point(a, w, h):
     seated figure: one point returns whichever part SAM 2 thinks you
     meant, which is how a swap comes back with a new head on the old
     body. A point on the head and another on the body asks for both."""
+    return _points(a.get("point"), w, h) or [{"x": w // 2, "y": h // 2}]
+
+
+def _points(seq, w, h):
+    """[x, y, x, y, ...] or [[x, y], ...] -> SAM 2 coordinates.
+
+    Fractions of the frame and pixels both work, and anything that is
+    not a number is dropped rather than raising: a coordinate typed at
+    a gate should never end a run."""
     flat = []
-    for v in a.get("point") or []:
+    for v in seq or []:
         if isinstance(v, (list, tuple)) and len(v) == 2:
             flat += [v[0], v[1]]
         else:
@@ -111,17 +120,25 @@ def _point(a, w, h):
         if 0 < x <= 1 and 0 < y <= 1:          # a fraction of the frame
             x, y = x * w, y * h
         out.append({"x": int(round(x)), "y": int(round(y))})
-    return out or [{"x": w // 2, "y": h // 2}]
+    return out
 
 
 def _repoint(a, text):
-    """"point 0.3 0.6" or "point 320 512" -> [x, y], else None.
+    """"point 0.3 0.6" -> ("point", [0.3, 0.6]), "avoid 0.1 0.2" ->
+    ("avoid", ...), else None.
 
     Anything else is ordinary feedback and goes to the rewriter."""
     if not a:
         return None
     words = str(text).replace(",", " ").split()
-    if not words or words[0].lower() not in ("point", "points", "pt"):
+    if not words:
+        return None
+    head = words[0].lower()
+    if head in ("avoid", "not", "exclude"):
+        kind = "avoid"
+    elif head in ("point", "points", "pt"):
+        kind = "point"
+    else:
         return None
     nums = []
     for word in words[1:]:
@@ -130,7 +147,9 @@ def _repoint(a, text):
         except ValueError:
             continue
     # Pairs, so "point 0.5 0.3 0.45 0.62" marks a head and a body.
-    return nums[:len(nums) - len(nums) % 2] if len(nums) >= 2 else None
+    if len(nums) < 2:
+        return None
+    return kind, nums[:len(nums) - len(nums) % 2]
 
 
 def _video(files, prefer=None, drop=None):
@@ -207,6 +226,9 @@ def run(ctx, feedback=None, items=None):
                     "@FRAMES": frames,
                     "@FPS": fps, "@SEED": random.randint(1, 2**31),
                     "@FILENAME": f"studio/{p.dir.name}_{sid}"}
+                avoid = _points(an.get("avoid"), w, h)
+                if avoid:
+                    values["@NEGPOINTS"] = json.dumps(avoid)
                 wf = cfg["comfy"]["workflows"][wfk]
                 what = f"swap, {frames / fps:.1f}s at {fps}fps"
             else:
@@ -270,10 +292,14 @@ def run(ctx, feedback=None, items=None):
                 # that - it is a coordinate. "point 0.3 0.6" says where.
                 moved = _repoint(an, val) if an else None
                 if moved:
-                    s["animate"]["point"] = moved
+                    kind, pts = moved
+                    s["animate"]["avoid" if kind == "avoid"
+                                 else "point"] = pts
                     p.write_json("3_script.json", script)
+                    said = ("avoiding" if kind == "avoid"
+                            else "looking at")
                     p.event("clips", "human_pick",
-                            f"{sid}: looking at {moved} instead")
+                            f"{sid}: {said} {pts}")
                     continue
                 _rewrite(ctx, s, val, issues)
                 p.write_json("3_script.json", script)

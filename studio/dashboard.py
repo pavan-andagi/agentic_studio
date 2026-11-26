@@ -626,12 +626,25 @@ class Handler(BaseHTTPRequestHandler):
         image_size = str(body.get("image_size", "")).strip()
         seconds = body.get("seconds")
         fps = body.get("fps")
-        point = body.get("point")
-        if point is not None:
+        # Pairs, not a pair: marking a character takes a point on the
+        # head and another on the body, or the segmenter picks one of
+        # them and the swap comes back half done.
+        def _pairs(raw, what):
+            if raw is None:
+                return None
             try:
-                point = [float(point[0]), float(point[1])]
-            except (TypeError, ValueError, IndexError):
-                return self._send(400, {"error": "point must be two numbers"})
+                nums = [float(v) for v in raw]
+            except (TypeError, ValueError):
+                raise ValueError(f"{what} must be numbers")
+            if len(nums) < 2:
+                raise ValueError(f"{what} needs at least one x and y")
+            return nums[:len(nums) - len(nums) % 2]
+
+        try:
+            point = _pairs(body.get("point"), "point")
+            avoid = _pairs(body.get("avoid"), "avoid")
+        except ValueError as e:
+            return self._send(400, {"error": str(e)})
         if until and until not in STAGES:
             return self._send(400, {"error": f"no stage called {until}"})
         if mode == "topic" and not brief:
@@ -702,7 +715,9 @@ class Handler(BaseHTTPRequestHandler):
                 if motion:
                     cmd += ["--motion", motion]
                 if point:
-                    cmd += ["--point", f"{point[0]},{point[1]}"]
+                    cmd += ["--point", ",".join(str(v) for v in point)]
+                if avoid:
+                    cmd += ["--avoid", ",".join(str(v) for v in avoid)]
             if mode in ("frames", "image", "swap"):
                 saved = _save_uploads(stage, body.get("files") or [])
                 if not saved:
