@@ -101,6 +101,19 @@ else
   note "free"
 fi
 
+# ---------------------------------------------------------------- nodes
+# A workflow that names a node ComfyUI has not loaded is not rejected
+# when the studio starts or when the stage opens - only when the job is
+# submitted, minutes in, as `invalid prompt: Node ... not found`. The
+# usual cause is a node pack installed after ComfyUI last booted, which
+# costs an hour to track down and two seconds to ask about.
+if [ "$CHECK_COMFY" = 1 ] && [ -f "$STUDIO/tools/check_nodes.py" ]; then
+  if ! out=$(python3 "$STUDIO/tools/check_nodes.py" 2>&1); then
+    say "Workflow nodes"
+    printf '%s\n' "$out" | while IFS= read -r line; do bad "$line"; done
+  fi
+fi
+
 # --------------------------------------------------------------- models
 # Three seconds, and it is the check that would have saved an evening:
 # a model file can download wrong, load without complaint, and produce
