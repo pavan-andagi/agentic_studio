@@ -32,6 +32,8 @@ import json
 import shutil
 from pathlib import Path
 
+from . import style as _style
+
 IMG_EXT = (".png", ".jpg", ".jpeg", ".webp")
 
 # What a supplied shot must have, and what we fill in when it does not.
@@ -160,6 +162,26 @@ def _bind_images(shots, supplied, project, aspect):
     return out
 
 
+def _styled(prompt, line):
+    """A prompt written here, carrying the chosen style's own words.
+
+    On the full path the Planner turns the style profile into the
+    plan's style line and every image prompt starts with it. An entry
+    mode writes its own one-shot script and never calls the Planner, so
+    a style picked in the browser reached nothing but the Finish
+    filters - and a run stopped at Pictures never gets to Finish. That
+    is why choosing a style there changed nothing at all."""
+    prompt = (prompt or "").strip()
+    line = " ".join((line or "").split())
+    if not line:
+        return prompt
+    if not prompt:
+        return line
+    if prompt[-1] not in ".!?":
+        prompt += "."
+    return f"{line} {prompt}"
+
+
 def _point_arg(text, what="--point"):
     """"0.72,0.42" -> [0.72, 0.42], and any number of pairs after that.
 
@@ -233,6 +255,12 @@ def prepare(project, cfg, script=None, image=None, images=None, brief=None,
 
     d = cfg["defaults"]
     default_seconds = int(d.get("max_clip_seconds", 5))
+    # The style the browser (or --style) chose, as the Images agent
+    # would receive it from a plan that was never written here.
+    try:
+        look_line = _style.load(cfg, project.state.get("style")).plate_line()
+    except (ValueError, AttributeError):
+        look_line = ""
     aspect = tuple(d.get("video_size", [704, 1280]))
     kf_dir = project.dir / "keyframes"
     kf_dir.mkdir(exist_ok=True)
@@ -314,11 +342,11 @@ def prepare(project, cfg, script=None, image=None, images=None, brief=None,
         # picture. Asked for pictures alone, there is nothing to move,
         # and demanding a sentence about movement would be busywork.
         motion = (brief or "").strip()
-        data = _normalise({"shots": [{"id": "s01", "beat": look[:80],
-                                      "start_image_prompt": look,
-                                      "motion_prompt": motion,
-                                      "duration": default_seconds}]},
-                          default_seconds)
+        data = _normalise({"shots": [{
+            "id": "s01", "beat": look[:80],
+            "start_image_prompt": _styled(look, look_line),
+            "motion_prompt": motion,
+            "duration": default_seconds}]}, default_seconds)
         supplied = {}
         notes.append("one described picture" if not motion else
                      f"one described picture, drawn and then animated for "

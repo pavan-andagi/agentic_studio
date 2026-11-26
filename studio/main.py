@@ -280,6 +280,16 @@ def main():
               f"{d['video_size'][0]}x{d['video_size'][1]}, {d['fps']}fps, "
               f"up to {d['max_clip_seconds']}s a shot")
         p.save()
+    # Before entry.prepare, which writes the image prompts for the
+    # one-shot modes and needs the style's own words to put in them.
+    # Set after it, a style chosen in the browser reached nothing but
+    # the Finish filters, so picking one and stopping at Pictures
+    # changed precisely nothing.
+    if args.style:
+        style.load(cfg, args.style)          # raises on an unknown name
+        p.state["style"] = args.style
+        p.save()
+
     if args.command == "new":
         if not (args.brief or args.script or args.image or args.describe
                 or args.video):
@@ -310,10 +320,6 @@ def main():
     # can be carried on to Audio later without starting again.
     if args.until:
         p.state["stop_after"] = args.until
-        p.save()
-    if args.style:
-        style.load(cfg, args.style)          # raises on an unknown name
-        p.state["style"] = args.style
         p.save()
     if not p.state["inputs"].get("brief") and not p.state.get("entry"):
         sys.exit("No brief saved for this project; start it with 'new'.")
