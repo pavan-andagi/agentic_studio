@@ -1,0 +1,45 @@
+From 93afc8785f86e45cb4a4cbebc8ebb65809c5a6c1 Mon Sep 17 00:00:00 2001
+From: Claude <noreply@anthropic.com>
+Date: Thu, 26 Nov 2026 13:25:38 +0100
+Subject: [PATCH] DWPose bbox detector on GPU: TorchScript instead of ONNX
+
+The pose estimator was already TorchScript and ran on the GPU; the
+bounding-box detector was yolox_l.onnx, which goes through onnxruntime.
+Its CUDA provider will not load against torch 2.8.0+cu128, so
+comfyui_controlnet_aux clears AUX_ORT_PROVIDERS and runs the detector on
+CPU - once per frame, twice per clip, for the face pass and the
+body/hands pass.
+
+Measured on a 4-second swap: 45s GPU busy against 14m20s idle.
+
+Co-Authored-By: Claude Opus 5 <noreply@anthropic.com>
+Claude-Session: https://claude.ai/code/session_01YKsc8cx34uFtw34kMSZZE9
+---
+ workflows/wan_animate.json | 4 ++--
+ 1 file changed, 2 insertions(+), 2 deletions(-)
+
+diff --git a/workflows/wan_animate.json b/workflows/wan_animate.json
+index 44afe1c..22f966e 100644
+--- a/workflows/wan_animate.json
++++ b/workflows/wan_animate.json
+@@ -194,7 +194,7 @@
+         "158",
+         0
+       ],
+-      "bbox_detector": "yolox_l.onnx",
++      "bbox_detector": "yolox_l.torchscript.pt",
+       "pose_estimator": "dw-ll_ucoco_384_bs5.torchscript.pt",
+       "scale_stick_for_xinsr_cn": "disable",
+       "image": [
+@@ -218,7 +218,7 @@
+         "158",
+         0
+       ],
+-      "bbox_detector": "yolox_l.onnx",
++      "bbox_detector": "yolox_l.torchscript.pt",
+       "pose_estimator": "dw-ll_ucoco_384_bs5.torchscript.pt",
+       "scale_stick_for_xinsr_cn": "disable",
+       "image": [
+-- 
+2.43.0
+
