@@ -5,7 +5,7 @@ import shutil
 from pathlib import Path
 
 from ..approval import gate, open_file
-from ..media import assemble, contact_sheet, last_frame, probe, validate
+from ..media import assemble, contact_sheet, last_frame, probe, sh, validate
 from .base import StageResult, history, rules
 
 REWRITE = """You rewrite one LTX-2.5 motion prompt using the feedback and
@@ -47,20 +47,71 @@ def _wan_frames(seconds, fps):
     return n - ((n - 1) % 4)
 
 
+MAX_DRIVE_FPS = 30
+
+
+def _drive(an, seconds, fallback_fps, work):
+    """The driving clip, the rate to write it at, and how many frames.
+
+    Wan consumes the clip frame by frame and writes the result at
+    whatever rate it is told, so the two have to agree. A 24 fps clip
+    rendered at 16 plays half again as slow, and runs out of story
+    two-thirds of the way through: 141 frames is 5.9 seconds of a 24 fps
+    source stretched over 8.8 seconds of output.
+
+    A swap exists to keep the original motion, so the clip's own rate
+    wins. Only a rate too expensive to generate is brought down, and
+    then the clip itself is resampled, so the motion still runs in real
+    time rather than in slow motion."""
+    src = Path(an["video"])
+    try:
+        info = probe(src)
+    except Exception:                                        # noqa: BLE001
+        fps = int(fallback_fps)
+        return src, fps, _wan_frames(seconds, fps)
+
+    fps = int(round(info["fps"])) or int(fallback_fps)
+    use = src
+    if fps > MAX_DRIVE_FPS:
+        fps = MAX_DRIVE_FPS
+        use = Path(work) / f"{src.stem}_{fps}fps.mp4"
+        if not use.exists():
+            sh(["ffmpeg", "-y", "-v", "error", "-i", str(src),
+                "-vf", f"fps={fps}", "-an", str(use)])
+    # Asking for more seconds than the clip holds gives Wan nothing to
+    # follow past the end, and it invents motion there.
+    secs = min(float(seconds), float(info["duration"]))
+    return use, fps, _wan_frames(secs, fps)
+
+
 def _point(a, w, h):
     """Where SAM 2 should look for the character being replaced.
 
     The centre of the frame is right surprisingly often - a subject
     worth replacing is usually the thing the camera is pointed at - and
     it means a swap can run unattended. An explicit point overrides it,
-    as a fraction of the frame (0.5, 0.4) or as pixels (320, 512)."""
-    pt = a.get("point")
-    if isinstance(pt, (list, tuple)) and len(pt) == 2:
-        x, y = float(pt[0]), float(pt[1])
+    as a fraction of the frame (0.5, 0.4) or as pixels (320, 512).
+
+    Several points are allowed, and are worth it on an animal or a
+    seated figure: one point returns whichever part SAM 2 thinks you
+    meant, which is how a swap comes back with a new head on the old
+    body. A point on the head and another on the body asks for both."""
+    flat = []
+    for v in a.get("point") or []:
+        if isinstance(v, (list, tuple)) and len(v) == 2:
+            flat += [v[0], v[1]]
+        else:
+            flat.append(v)
+    out = []
+    for x, y in zip(flat[0::2], flat[1::2]):
+        try:
+            x, y = float(x), float(y)
+        except (TypeError, ValueError):
+            continue
         if 0 < x <= 1 and 0 < y <= 1:          # a fraction of the frame
             x, y = x * w, y * h
-        return [{"x": int(round(x)), "y": int(round(y))}]
-    return [{"x": w // 2, "y": h // 2}]
+        out.append({"x": int(round(x)), "y": int(round(y))})
+    return out or [{"x": w // 2, "y": h // 2}]
 
 
 def _repoint(a, text):
@@ -78,7 +129,8 @@ def _repoint(a, text):
             nums.append(float(word))
         except ValueError:
             continue
-    return nums[:2] if len(nums) >= 2 else None
+    # Pairs, so "point 0.5 0.3 0.45 0.62" marks a head and a body.
+    return nums[:len(nums) - len(nums) % 2] if len(nums) >= 2 else None
 
 
 def _video(files, prefer=None, drop=None):
@@ -140,19 +192,23 @@ def run(ctx, feedback=None, items=None):
                         "this shot is a character swap, but config.yaml has "
                         "no comfy.workflows.animate - add "
                         "workflows/wan_animate.json")
-                fps = int(d["fps"])
+                # The clip's own frame rate, not the studio's: see
+                # _drive. Rendering a 24 fps source at 16 is what makes
+                # a swap play in slow motion and stop early.
+                drive, fps, frames = _drive(an, s["duration"],
+                                            d["fps"], p.dir)
                 values = {
-                    "@VIDEO": ctx.comfy.upload(an["video"]),
+                    "@VIDEO": ctx.comfy.upload(drive),
                     "@IMAGE": ctx.comfy.upload(an["reference"]),
                     "@PROMPT": (s["motion_prompt"]
                                 or an.get("instruction") or ""),
                     "@POINTS": json.dumps(_point(an, w, h)),
                     "@WIDTH": w, "@HEIGHT": h,
-                    "@FRAMES": _wan_frames(s["duration"], fps),
+                    "@FRAMES": frames,
                     "@FPS": fps, "@SEED": random.randint(1, 2**31),
                     "@FILENAME": f"studio/{p.dir.name}_{sid}"}
                 wf = cfg["comfy"]["workflows"][wfk]
-                what = f"swap, {s['duration']}s"
+                what = f"swap, {frames / fps:.1f}s at {fps}fps"
             else:
                 if s["start_from"] == "previous_last_frame" and idx > 0:
                     start = last_frame(
