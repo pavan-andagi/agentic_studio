@@ -152,6 +152,34 @@ def _repoint(a, text):
     return kind, nums[:len(nums) - len(nums) % 2]
 
 
+def _segment_swap(ctx, p, s, an, sid, attempt):
+    """Hand the shot to the per-segment pipeline and take its result.
+
+    The working folder is kept between attempts on purpose: the cut,
+    the carried points and the recast references cost seconds and do
+    not change, so a retake pays for the generation again and nothing
+    else."""
+    from ..swapvid import swap_clip
+    out = p.dir / "clips" / f"swap_{sid}"
+    if attempt > 1:
+        shutil.rmtree(out / "takes", ignore_errors=True)
+    d = ctx.cfg["defaults"]
+    refs = [an["reference"]]
+    extra = an.get("references") or []
+    refs += [r for r in extra if r not in refs]
+    final, _ = swap_clip(
+        ctx.comfy, ctx.cfg, an["video"], refs[:2], out,
+        say_text=(s.get("motion_prompt") or an.get("instruction") or ""),
+        points=an.get("point") or [], avoid=an.get("avoid") or [],
+        seed=random.randint(1, 2 ** 31),
+        sensitivity=float(d.get("swap_sensitivity", 1.0)),
+        max_seconds=float(d.get("swap_max_seconds", 4.0)),
+        overlap=int(d.get("swap_overlap", 8)),
+        status=lambda line: p.set_status("clips", "working",
+                                         f"{sid}: {line}"))
+    return final
+
+
 def _video(files, prefer=None, drop=None):
     """The video the workflow actually made.
 
@@ -200,8 +228,19 @@ def run(ctx, feedback=None, items=None):
             _rewrite(ctx, s, feedback)
             p.write_json("3_script.json", script)
         an = animate_of(s)
+        # A swap is generated segment by segment unless config says
+        # otherwise: one reference cannot stand for every pose and
+        # camera angle in a clip, and the single pass invents a layout
+        # to fit the mask wherever the reference does not fit.
+        by_segment = bool(an) and str(
+            d.get("swap_mode", "segments")).lower() == "segments"
+        attempt = 0
         while True:
-            if an:
+            attempt += 1
+            if an and by_segment:
+                wf = values = None
+                what = "swap, segment by segment"
+            elif an:
                 # A swap replaces a character in a clip that already
                 # exists, so there is no keyframe and no @DURATION -
                 # Wan counts frames, not seconds.
@@ -252,15 +291,32 @@ def run(ctx, feedback=None, items=None):
             print(f"\n[Clip agent] {sid} ({what}) ...")
             p.set_status("clips", "working",
                          f"generating clip {sid} ({what})")
-            vid = _video(ctx.comfy.run(wf, values, p.dir / "clips" / "takes",
-                                       label=sid),
-                         prefer=f"{p.dir.name}_{sid}",
-                         drop=an["video"] if an else None)
+            if wf is None:
+                vid = _segment_swap(ctx, p, s, an, sid, attempt)
+            else:
+                vid = _video(ctx.comfy.run(wf, values,
+                                           p.dir / "clips" / "takes",
+                                           label=sid),
+                             prefer=f"{p.dir.name}_{sid}",
+                             drop=an["video"] if an else None)
             info, issues = validate(vid)
             sheet = contact_sheet(vid, p.dir / "sheets" / f"{sid}.png")
             open_file(vid)
             where = ""
-            if an:
+            if an and by_segment:
+                book = (p.dir / "clips" / f"swap_{sid}" / "segments.json")
+                flagged = []
+                if book.exists():
+                    flagged = json.loads(
+                        book.read_text(encoding="utf-8")).get("flagged") or []
+                where = (f"\nMade in segments; see "
+                         f"{p.dir / 'clips' / f'swap_{sid}'}/contact_cast.png"
+                         .replace(".png", ".jpg")
+                         + (f"\nFlagged by the auto-check: "
+                            f"{', '.join(flagged)}" if flagged else "")
+                         + "\nIf it marked the wrong thing, give points: "
+                           "'point 0.3 0.25 0.6 0.44'")
+            elif an:
                 pt = _point(an, w, h)[0]
                 where = (f"\nReplaced: the subject at ({pt['x']}, {pt['y']})"
                          f" - if that found the wrong one, say so and give "

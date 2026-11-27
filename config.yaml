@@ -39,6 +39,15 @@ defaults:
   transition_seconds: 0.5         # chained shots always join seamlessly
   fps: 16
   max_clip_seconds: 5
+
+  # Character swap: Video. 'segments' cuts the clip where it changes,
+  # gives each piece a reference made from its own footage and
+  # generates piece by piece; 'single' is the old one-pass behaviour,
+  # kept for comparison.
+  swap_mode: segments
+  swap_sensitivity: 1.0      # higher cuts more often
+  swap_max_seconds: 4        # no chunk longer than this, however still
+  swap_overlap: 8            # frames dissolved at each join
   images_per_keyframe: 2          # Z-Image variants to choose from
   upscale_4k: false               # true = run the upscale workflow on approved clips
 

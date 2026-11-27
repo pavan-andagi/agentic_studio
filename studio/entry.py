@@ -292,6 +292,11 @@ def prepare(project, cfg, script=None, image=None, images=None, brief=None,
             "duration": dur,
             "animate": {"video": str(src.resolve()),
                         "reference": str(pics[0].resolve()),
+                        # Both views, when two were given: a segment
+                        # swap recasts a frame per camera angle, and a
+                        # front-only reference makes the model guess
+                        # the flank every time the subject turns.
+                        "references": [str(x.resolve()) for x in pics[:2]],
                         "instruction": said,
                         "point": _point_arg(point),
                         "avoid": _point_arg(avoid, "--avoid")}}]},
